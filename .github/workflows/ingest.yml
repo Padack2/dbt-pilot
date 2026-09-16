@@ -1,0 +1,50 @@
+name: Ingest & dbt run
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL_BATCH: ${{ secrets.DATABASE_URL_BATCH }}
+      GITHUB_TOKEN: ${{ secrets.GH_EVENTS_TOKEN }}
+      PGHOST: ${{ secrets.PGHOST }}
+      PGUSER: ${{ secrets.PGUSER }}
+      PGPASSWORD: ${{ secrets.PGPASSWORD }}
+      PGDATABASE: ${{ secrets.PGDATABASE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ingest dependencies
+        run: pip install -r pipeline/ingest/requirements.txt
+
+      - name: Run ingest
+        run: python pipeline/ingest/ingest.py
+
+      - name: Install dbt
+        run: pip install -r pipeline/dbt/requirements.txt
+
+      - name: Configure dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cp pipeline/dbt/profiles.yml.example ~/.dbt/profiles.yml
+
+      - name: dbt run
+        run: dbt run --project-dir pipeline/dbt --profiles-dir ~/.dbt
+
+      - name: Refresh materialized views (CONCURRENTLY)
+        run: dbt run-operation refresh_materialized_views --project-dir pipeline/dbt --profiles-dir ~/.dbt
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"dbt-pilot 파이프라인 실패: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"

@@ -1,0 +1,15 @@
+# 로컬 실행 시 ~/.dbt/profiles.yml 로 복사해서 사용.
+# GitHub Actions에서는 이 값들을 env var로 주입해 동일 파일을 생성.
+dbt_pilot:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PGHOST') }}"
+      port: 5432
+      user: "{{ env_var('PGUSER') }}"
+      password: "{{ env_var('PGPASSWORD') }}"
+      dbname: "{{ env_var('PGDATABASE') }}"
+      schema: public
+      sslmode: require
+      threads: 4

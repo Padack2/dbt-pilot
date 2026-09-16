@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: public
+    tables:
+      - name: raw_events
+        description: GitHub Public Events API에서 5분마다 수집한 원본 이벤트.
+        columns:
+          - name: event_id
+            tests:
+              - unique
+              - not_null
