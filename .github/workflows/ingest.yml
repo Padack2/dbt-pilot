@@ -1,8 +1,9 @@
 name: Ingest & dbt build
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # 5분 주기 트리거는 GitHub Actions의 schedule 이벤트가 고부하 시간대에
+  # 수 시간까지 지연/드롭되는 문제(ADR-003)로 인해 외부 cron(cron-job.org)이
+  # workflow_dispatch를 호출하는 방식으로 대체함. schedule 블록은 의도적으로 제거.
   workflow_dispatch: {}
 
 jobs:
