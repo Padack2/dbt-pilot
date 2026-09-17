@@ -1,6 +1,7 @@
-import { getRecentPipelineRuns, summarize, type PipelineRun } from "@/lib/pipeline-runs";
-import { getLatestMvRefreshStatus, type MvRefreshStatus } from "@/lib/mv-refresh";
 import { getTrendingRepos } from "@/lib/trending-repos";
+import { getTopicRanking, getLanguageRanking } from "@/lib/trending-rankings";
+import { getRepoDailyGrowth } from "@/lib/trending-growth";
+import { BarChart } from "@/components/BarChart";
 import {
   getAvailableRankingDates,
   getRepoRanking,
@@ -14,52 +15,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const MV_LABELS: Record<string, string> = {
-  mv_daily_trend: "일별 트렌드",
-  mv_repo_ranking: "리포 랭킹",
-  mv_event_type_dist: "이벤트 타입 분포",
-};
-const MV_ORDER = ["mv_daily_trend", "mv_repo_ranking", "mv_event_type_dist"];
+const TRENDING_REPOS_LIMIT = 10;
 
-function formatDuration(startedAt: string, finishedAt: string): string {
-  const seconds = Math.max(
-    0,
-    Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-  );
-  return `${seconds}s`;
-}
-
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.round(diffMs / 60000);
-  if (minutes < 1) return "방금 전";
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.round(hours / 24)}일 전`;
-}
-
-function StatCard({ label, value, tone }: { label: string; value: string; tone?: "success" | "failure" }) {
+function HighlightCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="card">
       <div className="card-label">{label}</div>
-      <div className={`card-value ${tone ? `text-${tone}` : ""}`}>{value}</div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: PipelineRun["status"] }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
-}
-
-function MvRefreshCard({ mvName, status }: { mvName: string; status: MvRefreshStatus | undefined }) {
-  return (
-    <div className="card">
-      <div className="card-label">{MV_LABELS[mvName] ?? mvName}</div>
-      <div className="card-value">{status ? formatRelativeTime(status.startedAt) : "미실행"}</div>
-      {status && (
-        <div className="card-sub">{formatDuration(status.startedAt, status.finishedAt)} 소요</div>
-      )}
+      <div className="card-value">{value}</div>
+      {sub && <div className="card-sub">{sub}</div>}
     </div>
   );
 }
@@ -82,110 +45,206 @@ export default async function Home({
   const parsedLimit = typeof sp.limit === "string" ? parseInt(sp.limit, 10) : NaN;
   const selectedLimit = isRankingLimit(parsedLimit) ? parsedLimit : 10;
 
-  const [runs, mvStatuses, ranking, trendingRepos] = await Promise.all([
-    getRecentPipelineRuns(),
-    getLatestMvRefreshStatus(),
-    selectedDate ? getRepoRanking(selectedDate, selectedMetric, selectedLimit) : Promise.resolve([]),
-    getTrendingRepos(),
+  const [trendingRepos, topicRanking, languageRanking, ranking] = await Promise.all([
+    getTrendingRepos(TRENDING_REPOS_LIMIT),
+    getTopicRanking(),
+    getLanguageRanking(),
+    selectedDate
+      ? getRepoRanking(selectedDate, selectedMetric, selectedLimit)
+      : Promise.resolve([]),
   ]);
 
-  const stats = summarize(runs);
-  const mvStatusByName = new Map(mvStatuses.map((status) => [status.mvName, status]));
+  const topRepo = trendingRepos[0];
+  const topTopic = topicRanking[0];
+  const topLanguage = languageRanking[0];
+  const observedCount = trendingRepos.filter((repo) => repo.observedEvents > 0).length;
+
+  const selectedGrowthRepo =
+    typeof sp.growth_repo === "string" && trendingRepos.some((repo) => repo.repoName === sp.growth_repo)
+      ? sp.growth_repo
+      : topRepo?.repoName;
+
+  const dailyGrowth = selectedGrowthRepo ? await getRepoDailyGrowth(selectedGrowthRepo) : [];
 
   return (
     <main className="dashboard">
       <header className="dashboard-header">
         <div>
-          <h1>dbt Pilot</h1>
-          <p className="subtitle">GitHub Events 파이프라인 실행 현황</p>
+          <h1>분석 결과 조회</h1>
+          <p className="subtitle">GitHub 트렌드 / 급상승 레포 분석 결과</p>
         </div>
       </header>
 
       <section className="stats-grid">
-        <StatCard
-          label="마지막 실행"
-          value={stats.lastRun ? formatRelativeTime(stats.lastRun.startedAt) : "-"}
-          tone={stats.lastRun?.status}
+        <HighlightCard
+          label="오늘의 1위 레포"
+          value={topRepo ? topRepo.repoName : "-"}
+          sub={topRepo ? `${topRepo.stars.toLocaleString("ko-KR")} ★` : undefined}
         />
-        <StatCard
-          label="성공률"
-          value={stats.successRate !== null ? `${stats.successRate.toFixed(0)}%` : "-"}
+        <HighlightCard
+          label="인기 토픽"
+          value={topTopic ? topTopic.topic : "-"}
+          sub={topTopic ? `${topTopic.repoCount}개 레포에서 언급` : undefined}
         />
-        <StatCard
-          label="평균 소요 시간"
-          value={stats.avgDurationSeconds !== null ? `${stats.avgDurationSeconds.toFixed(0)}s` : "-"}
+        <HighlightCard
+          label="인기 언어"
+          value={topLanguage ? topLanguage.language : "-"}
+          sub={topLanguage ? `${topLanguage.repoCount}개 레포` : undefined}
         />
-        <StatCard
-          label="수집 row 합계"
-          value={stats.totalRowsIngested.toLocaleString("ko-KR")}
+        <HighlightCard
+          label="실시간 활동 확인된 레포"
+          value={`${observedCount} / ${trendingRepos.length}`}
+          sub="최근 수집된 데이터에서도 활동이 확인됨"
         />
       </section>
 
-      <section className="run-timeline" title="최근 실행 순 (좌: 과거 → 우: 최신)">
-        {[...runs].reverse().map((run) => (
-          <div
-            key={run.id}
-            className={`run-timeline-item ${run.status}`}
-            title={`${new Date(run.startedAt).toLocaleString("ko-KR")} · ${run.status}`}
-          />
-        ))}
+      <div className="analysis-grid">
+        <section>
+          <h2 className="section-title">급상승 레포</h2>
+          <p className="section-caption">최근 새로 만들어진 인기 저장소</p>
+          {trendingRepos.length === 0 ? (
+            <section className="card">
+              <p className="empty-state">아직 표시할 급상승 레포 데이터가 없습니다.</p>
+            </section>
+          ) : (
+            <section className="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Repo</th>
+                    <th>Language</th>
+                    <th>Star</th>
+                    <th>Fork</th>
+                    <th>최근 활동</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trendingRepos.map((repo) => (
+                    <tr key={repo.repoName}>
+                      <td title={repo.description ?? undefined}>{repo.repoName}</td>
+                      <td>{repo.language ?? "-"}</td>
+                      <td>{repo.stars}</td>
+                      <td>{repo.forks}</td>
+                      <td>
+                        {repo.observedEvents > 0 ? (
+                          <span className="badge badge-success">{repo.observedEvents}건</span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </section>
+
+        <section>
+          <h2 className="section-title">키워드 / 기술스택</h2>
+          <p className="section-caption">급상승 레포에서 자주 보이는 주제와 사용 언어</p>
+          <section className="card">
+            <div className="card-label">인기 토픽</div>
+            {topicRanking.length === 0 ? (
+              <p className="empty-state">토픽 데이터가 없습니다.</p>
+            ) : (
+              <div className="tag-cloud">
+                {topicRanking.map((item) => (
+                  <span key={item.topic} className="badge badge-neutral">
+                    {item.topic} · {item.repoCount}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="card-label card-label-spaced">인기 언어</div>
+            {languageRanking.length === 0 ? (
+              <p className="empty-state">언어 데이터가 없습니다.</p>
+            ) : (
+              <div className="tag-cloud">
+                {languageRanking.map((item) => (
+                  <span key={item.language} className="badge badge-neutral">
+                    {item.language} · {item.repoCount}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+        </section>
+      </div>
+
+      <h2 className="section-title">일별 성장 추이</h2>
+      <p className="section-caption">선택한 레포의 하루 단위 스타/포크 증가량</p>
+      <section className="card filter-card">
+        <form className="filter-form">
+          <div className="field">
+            <label htmlFor="growth_repo">레포</label>
+            <select id="growth_repo" name="growth_repo" defaultValue={selectedGrowthRepo}>
+              {trendingRepos.map((repo) => (
+                <option key={repo.repoName} value={repo.repoName}>
+                  {repo.repoName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" className="btn">
+            조회
+          </button>
+        </form>
       </section>
 
-      <h2 className="section-title">MV 리프레시 현황</h2>
-      <section className="stats-grid">
-        {MV_ORDER.map((mvName) => (
-          <MvRefreshCard key={mvName} mvName={mvName} status={mvStatusByName.get(mvName)} />
-        ))}
-      </section>
-
-      <h2 className="section-title">급상승 레포 (ADR-004)</h2>
-      {trendingRepos.length === 0 ? (
+      {dailyGrowth.length === 0 ? (
         <section className="card">
-          <p className="empty-state">
-            아직 trending_repos_snapshot에 데이터가 없습니다. trending.yml 워크플로우를 먼저
-            실행해주세요.
-          </p>
+          <p className="empty-state">아직 표시할 성장 추이 데이터가 없습니다. 스냅샷이 이틀 이상 쌓이면 증가량이 계산됩니다.</p>
         </section>
       ) : (
-        <section className="card table-card">
-          <table>
-            <thead>
-              <tr>
-                <th>Repo</th>
-                <th>설명</th>
-                <th>Language</th>
-                <th>Star</th>
-                <th>Fork</th>
-                <th>우리 샘플 관측</th>
-                <th>스냅샷 시각</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trendingRepos.map((repo) => (
-                <tr key={repo.repoName}>
-                  <td>{repo.repoName}</td>
-                  <td className="truncate-cell" title={repo.description ?? undefined}>
-                    {repo.description ? repo.description.slice(0, 60) : "-"}
-                  </td>
-                  <td>{repo.language ?? "-"}</td>
-                  <td>{repo.stars}</td>
-                  <td>{repo.forks}</td>
-                  <td>
-                    {repo.observedEvents > 0 ? (
-                      <span className="badge badge-success">{repo.observedEvents}건</span>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td>{formatRelativeTime(repo.capturedAt)}</td>
+        <>
+          <div className="growth-charts">
+            <section className="card">
+              <div className="card-label">일별 Star 증가량</div>
+              <BarChart
+                color="#facc15"
+                data={dailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.starGrowth ?? 0 }))}
+              />
+            </section>
+            <section className="card">
+              <div className="card-label">일별 Fork 증가량</div>
+              <BarChart
+                color="#38bdf8"
+                data={dailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.forkGrowth ?? 0 }))}
+              />
+            </section>
+          </div>
+
+          <section className="card table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>날짜</th>
+                  <th>Star 누적</th>
+                  <th>Star 증가</th>
+                  <th>Fork 누적</th>
+                  <th>Fork 증가</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+              </thead>
+              <tbody>
+                {[...dailyGrowth].reverse().map((d) => (
+                  <tr key={d.eventDate}>
+                    <td>{d.eventDate}</td>
+                    <td>{d.stars.toLocaleString("ko-KR")}</td>
+                    <td>{d.starGrowth === null ? "-" : `+${d.starGrowth.toLocaleString("ko-KR")}`}</td>
+                    <td>{d.forks.toLocaleString("ko-KR")}</td>
+                    <td>{d.forkGrowth === null ? "-" : `+${d.forkGrowth.toLocaleString("ko-KR")}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </>
       )}
 
       <h2 className="section-title">리포 랭킹 Top N</h2>
+      <p className="section-caption">최근 활동 데이터 기준 순위 (급상승 레포와는 다른 기준입니다)</p>
       <section className="card filter-card">
         <form className="filter-form">
           <div className="field">
@@ -226,7 +285,7 @@ export default async function Home({
 
       {rankingDates.length === 0 ? (
         <section className="card">
-          <p className="empty-state">아직 mv_repo_ranking에 데이터가 없습니다.</p>
+          <p className="empty-state">아직 표시할 랭킹 데이터가 없습니다.</p>
         </section>
       ) : (
         <section className="card table-card">
@@ -256,36 +315,6 @@ export default async function Home({
           </table>
         </section>
       )}
-
-      <h2 className="section-title">파이프라인 실행 이력</h2>
-      <section className="card table-card">
-        <table>
-          <thead>
-            <tr>
-              <th>시작 시각</th>
-              <th>상태</th>
-              <th>소요 시간</th>
-              <th>수집 row</th>
-              <th>에러</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id}>
-                <td>{new Date(run.startedAt).toLocaleString("ko-KR")}</td>
-                <td>
-                  <StatusBadge status={run.status} />
-                </td>
-                <td>{formatDuration(run.startedAt, run.finishedAt)}</td>
-                <td>{run.rowsIngested ?? "-"}</td>
-                <td className="truncate-cell" title={run.errorMessage ?? undefined}>
-                  {run.errorMessage ? run.errorMessage.slice(0, 60) : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
     </main>
   );
 }

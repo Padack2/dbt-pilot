@@ -5,7 +5,11 @@
     (각 모델의 indexes 설정에 unique index가 있어야 CONCURRENTLY가 가능)
 #}
 {% macro refresh_materialized_views() %}
-    {% set mv_models = ['mv_daily_trend', 'mv_repo_ranking', 'mv_event_type_dist'] %}
+    {# mv_trending_score_by_language는 mv_trending_repo_score를 참조하므로 반드시 그 뒤에 refresh한다 #}
+    {% set mv_models = [
+        'mv_daily_trend', 'mv_repo_ranking', 'mv_event_type_dist', 'mv_trending_daily_growth',
+        'mv_trending_repo_score', 'mv_trending_score_by_language'
+    ] %}
     {% for mv in mv_models %}
         {% set relation = ref(mv) %}
         {% set started_at = run_query('select now()').columns[0].values()[0] %}

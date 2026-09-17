@@ -5,7 +5,7 @@
 
 with latest_snapshot as (
     select distinct on (repo_name)
-        repo_name, description, stars, forks, language, repo_created_at, repo_pushed_at, captured_at
+        repo_name, description, stars, forks, language, repo_created_at, repo_pushed_at, captured_at, topics
     from {{ ref('stg_trending_repos_snapshot') }}
     order by repo_name, captured_at desc
 ),
@@ -31,6 +31,7 @@ select
     s.captured_at,
     coalesce(o.observed_events, 0) as observed_events,
     coalesce(o.observed_star_events, 0) as observed_star_events,
-    o.last_observed_at
+    o.last_observed_at,
+    s.topics
 from latest_snapshot s
 left join observed_activity o using (repo_name)

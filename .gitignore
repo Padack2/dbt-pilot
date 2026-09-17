@@ -27,3 +27,6 @@ profiles.yml
 Thumbs.db
 .vscode/
 .idea/
+
+# Others
+docs/adr/
