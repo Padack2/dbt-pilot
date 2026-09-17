@@ -23,9 +23,9 @@ PER_PAGE = 50
 
 INSERT_SQL = """
 insert into trending_repos_snapshot
-    (repo_name, description, stars, forks, language, repo_created_at, repo_pushed_at, captured_at)
+    (repo_name, description, stars, forks, language, repo_created_at, repo_pushed_at, captured_at, topics)
 values
-    (%(repo_name)s, %(description)s, %(stars)s, %(forks)s, %(language)s, %(repo_created_at)s, %(repo_pushed_at)s, %(captured_at)s);
+    (%(repo_name)s, %(description)s, %(stars)s, %(forks)s, %(language)s, %(repo_created_at)s, %(repo_pushed_at)s, %(captured_at)s, %(topics)s);
 """
 
 
@@ -59,6 +59,7 @@ def to_row(repo: dict, captured_at: str) -> dict:
         "repo_created_at": repo["created_at"],
         "repo_pushed_at": repo["pushed_at"],
         "captured_at": captured_at,
+        "topics": repo.get("topics") or [],
     }
 
 

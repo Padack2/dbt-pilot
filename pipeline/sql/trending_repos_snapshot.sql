@@ -10,11 +10,13 @@ create table if not exists trending_repos_snapshot (
     language         text,
     repo_created_at  timestamptz,
     repo_pushed_at   timestamptz,
-    captured_at      timestamptz not null
+    captured_at      timestamptz not null,
+    topics           text[]
 );
 
 -- 테이블이 이미 생성된 환경 대비 (컬럼 추가만 반영)
 alter table trending_repos_snapshot add column if not exists description text;
+alter table trending_repos_snapshot add column if not exists topics text[];
 
 create index if not exists idx_trending_repos_snapshot_repo_captured
     on trending_repos_snapshot (repo_name, captured_at desc);
