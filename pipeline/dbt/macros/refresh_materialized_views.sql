@@ -8,7 +8,13 @@
     {% set mv_models = ['mv_daily_trend', 'mv_repo_ranking', 'mv_event_type_dist'] %}
     {% for mv in mv_models %}
         {% set relation = ref(mv) %}
+        {% set started_at = run_query('select now()').columns[0].values()[0] %}
         {{ log('Refreshing ' ~ relation, info=true) }}
         {% do run_query('refresh materialized view concurrently ' ~ relation) %}
+        {% set finished_at = run_query('select now()').columns[0].values()[0] %}
+        {% do run_query(
+            "insert into mv_refresh_log (mv_name, started_at, finished_at) values ('"
+            ~ mv ~ "', '" ~ started_at ~ "'::timestamptz, '" ~ finished_at ~ "'::timestamptz)"
+        ) %}
     {% endfor %}
 {% endmacro %}

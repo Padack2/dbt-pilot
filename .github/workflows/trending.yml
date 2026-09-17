@@ -1,0 +1,26 @@
+name: Fetch trending repos
+
+on:
+  # 급상승 레포 스냅샷은 하루 1회면 충분해서(ADR-004), 5분 주기 ingest.yml과는
+  # 분리된 별도 워크플로우로 관리. 트리거는 ADR-003과 동일하게 외부 cron(cron-job.org)이
+  # workflow_dispatch를 하루 1회 호출하는 방식.
+  workflow_dispatch: {}
+
+jobs:
+  trending:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL_BATCH: ${{ secrets.DATABASE_URL_BATCH }}
+      GITHUB_TOKEN: ${{ secrets.GH_EVENTS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r pipeline/ingest/requirements.txt
+
+      - name: Fetch trending repos
+        run: python pipeline/ingest/fetch_trending.py
