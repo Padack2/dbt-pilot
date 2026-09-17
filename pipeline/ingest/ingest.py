@@ -14,6 +14,8 @@ import psycopg2.extras
 import requests
 
 GITHUB_EVENTS_URL = "https://api.github.com/events"
+# GitHub Events API는 페이지당 30건 고정, 최대 10페이지(300건)까지만 허용
+MAX_PAGES = 10
 
 INSERT_SQL = """
 insert into raw_events (event_id, type, actor_login, actor_id, repo_name, repo_id, payload, public, created_at)
@@ -28,9 +30,17 @@ def fetch_events() -> list[dict]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    response = requests.get(GITHUB_EVENTS_URL, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    events = []
+    for page in range(1, MAX_PAGES + 1):
+        response = requests.get(
+            GITHUB_EVENTS_URL, headers=headers, params={"page": page}, timeout=30
+        )
+        response.raise_for_status()
+        page_events = response.json()
+        if not page_events:
+            break
+        events.extend(page_events)
+    return events
 
 
 def to_row(event: dict) -> dict:

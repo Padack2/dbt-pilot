@@ -16,3 +16,5 @@ create index if not exists idx_pipeline_runs_started_at on pipeline_runs (starte
 
 grant select, insert on pipeline_runs to batch_user;
 grant select on pipeline_runs to readonly_user;
+
+grant usage, select on sequence pipeline_runs_id_seq to batch_user;
