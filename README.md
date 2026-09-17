@@ -79,12 +79,34 @@ python ingest.py
 
 ## GitHub Actions Secrets
 
-`.github/workflows/ingest.yml`이 5분마다 수집 → dbt build → MV refresh를 실행한다.
-리포지토리 Settings → Secrets에 아래 값을 등록해야 한다.
+`.github/workflows/ingest.yml`이 (외부 cron이 트리거할 때마다) 수집 → dbt build → MV refresh를
+실행한다. 리포지토리 Settings → Secrets에 아래 값을 등록해야 한다.
 
 | Secret | 용도 |
 |--------|------|
 | `DATABASE_URL_BATCH` | 수집/실행이력 기록 스크립트 DB 접속 (배치 롤) |
 | `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | dbt profiles.yml용 (배치 롤과 동일 계정) |
 | `GH_EVENTS_TOKEN` | GitHub Events API rate limit 상향용 (선택) |
+| `SLACK_WEBHOOK_URL` | 연속 실패 시 파이프라인 알림 |
+
+## 파이프라인 트리거 (cron-job.org)
+
+GitHub Actions의 `schedule` 이벤트는 고부하 시간대에 수 시간까지 지연/드롭될 수 있어(ADR-003
+참고), 실행 로직은 그대로 두고 트리거만 외부 무료 cron 서비스가 `workflow_dispatch`를
+호출하는 방식으로 대체했다.
+
+1. GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens에서
+   토큰 발급
+   - Repository access: 이 레포(`dbt-pilot`)만 선택
+   - Permissions: **Actions = Read and write**만 체크, 그 외 전부 No access
+   - Expiration: 90일 권장 (만료 시 재발급 + 아래 3번 갱신)
+2. [cron-job.org](https://cron-job.org)에서 무료 계정 생성 후 Create cronjob
+   - URL: `https://api.github.com/repos/<owner>/dbt-pilot/actions/workflows/ingest.yml/dispatches`
+   - Method: `POST`
+   - Headers: `Authorization: Bearer <1번에서 발급한 토큰>`, `Accept: application/vnd.github+json`
+   - Body(JSON): `{"ref": "main"}`
+   - Schedule: every 5 minutes
+3. 저장 후 cron-job.org의 Test run으로 1회 확인, 이후
+   `select started_at, status from pipeline_runs order by started_at desc limit 20;`로
+   5분 간격 기록이 쌓이는지 확인
 | `SLACK_WEBHOOK_URL` | 연속 실패 시 파이프라인 알림 |
