@@ -13,7 +13,7 @@ pipeline/dbt/       dbt 프로젝트 (staging → precomputed_events(incremental
 pipeline/ingest/    GitHub Events API 수집 스크립트 (Python)
 pipeline/sql/           DB 스키마(raw_events, pipeline_runs)·롤 분리 SQL (admin이 최초 1회 직접 실행)
 pipeline/observability/ 파이프라인 실행 이력 기록 + 연속 실패 시 Slack 알림
-.github/workflows/      5분 주기 수집 + dbt build + MV refresh 워크플로우
+.github/workflows/      5분 주기 수집 + dbt build + MV refresh 워크플로우, 1일 1회 급상승 레포 스냅샷 워크플로우
 ```
 
 MV 3종(`mv_daily_trend`, `mv_repo_ranking`, `mv_event_type_dist`)은 dbt-postgres의
@@ -37,6 +37,8 @@ MV 3종(`mv_daily_trend`, `mv_repo_ranking`, `mv_event_type_dist`)은 dbt-postgr
 psql "$ADMIN_DATABASE_URL" -f pipeline/sql/schema.sql          # raw_events 컬럼/인덱스 보강 (ALTER)
 psql "$ADMIN_DATABASE_URL" -f pipeline/sql/roles.sql           # batch_user / readonly_user 롤 분리
 psql "$ADMIN_DATABASE_URL" -f pipeline/sql/pipeline_runs.sql   # 파이프라인 실행 이력 테이블 (신규)
+psql "$ADMIN_DATABASE_URL" -f pipeline/sql/mv_refresh_log.sql  # MV별 refresh 시각 기록 테이블 (신규)
+psql "$ADMIN_DATABASE_URL" -f pipeline/sql/trending_repos_snapshot.sql  # 급상승 레포 스냅샷 테이블 (신규)
 ```
 
 `roles.sql`의 `CHANGE_ME` 비밀번호는 실행 전 실제 값으로 바꿀 것.
@@ -109,4 +111,21 @@ GitHub Actions의 `schedule` 이벤트는 고부하 시간대에 수 시간까�
 3. 저장 후 cron-job.org의 Test run으로 1회 확인, 이후
    `select started_at, status from pipeline_runs order by started_at desc limit 20;`로
    5분 간격 기록이 쌓이는지 확인
-| `SLACK_WEBHOOK_URL` | 연속 실패 시 파이프라인 알림 |
+
+## 급상승 레포 감지 (ADR-004)
+
+GitHub REST API에는 공식 trending 엔드포인트가 없어서, Search API(`created:>N일전` +
+`sort=stars`)로 "최근 생성되고 스타가 많은 레포"를 근사치로 하루 1회 수집한다. `/events` 기반
+5분 주기 샘플은 레포 하나당 이벤트가 거의 없어(대부분 0~1건) 인기 랭킹으로 쓰기엔 신호가
+너무 약했던 문제를 보완한다.
+
+1. 위 "파이프라인 트리거" 1번에서 발급한 PAT를 그대로 사용해 cron-job.org에 job 하나 추가
+   - URL: `https://api.github.com/repos/<owner>/dbt-pilot/actions/workflows/trending.yml/dispatches`
+   - Method/Headers/Body: 기존 job과 동일 (`{"ref": "main"}`)
+   - Schedule: 1일 1회 (예: 매일 00:10 UTC)
+2. 저장 후 Test run으로 1회 확인, 이후
+   `select count(*) from trending_repos_snapshot;`로 적재 확인
+3. 다음 `ingest.yml` 실행(5분 주기) 때 `dbt build`가 `trending_repos_with_activity` 뷰를
+   함께 갱신하므로, 이후
+   `select * from trending_repos_with_activity order by stars desc limit 10;`로
+   급상승 레포와 우리 샘플에서 관측된 활동(`observed_events`)을 함께 확인 가능

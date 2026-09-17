@@ -11,3 +11,9 @@ sources:
             tests:
               - unique
               - not_null
+      - name: trending_repos_snapshot
+        description: GitHub Search API로 하루 1회 수집한 급상승(신생 인기) 레포 스냅샷 (ADR-004).
+        columns:
+          - name: repo_name
+            tests:
+              - not_null
