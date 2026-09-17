@@ -1,4 +1,4 @@
-name: Ingest & dbt run
+name: Ingest & dbt build
 
 on:
   schedule:
@@ -8,6 +8,11 @@ on:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    # 5분 주기 트리거가 이전 실행보다 먼저 끝나도 겹쳐 돌지 않도록 순차 대기시킴
+    # (incremental 모델 + MV refresh가 동시에 두 번 도는 상황 방지)
+    concurrency:
+      group: ingest-pipeline
+      cancel-in-progress: false
     env:
       DATABASE_URL_BATCH: ${{ secrets.DATABASE_URL_BATCH }}
       GITHUB_TOKEN: ${{ secrets.GH_EVENTS_TOKEN }}
@@ -15,17 +20,23 @@ jobs:
       PGUSER: ${{ secrets.PGUSER }}
       PGPASSWORD: ${{ secrets.PGPASSWORD }}
       PGDATABASE: ${{ secrets.PGDATABASE }}
+      FAILURE_ALERT_THRESHOLD: "3"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Record start time
+        id: timing
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install ingest dependencies
-        run: pip install -r pipeline/ingest/requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r pipeline/ingest/requirements.txt -r pipeline/observability/requirements.txt
 
       - name: Run ingest
+        id: ingest
         run: python pipeline/ingest/ingest.py
 
       - name: Install dbt
@@ -36,15 +47,60 @@ jobs:
           mkdir -p ~/.dbt
           cp pipeline/dbt/profiles.yml.example ~/.dbt/profiles.yml
 
-      - name: dbt run
-        run: dbt run --project-dir pipeline/dbt --profiles-dir ~/.dbt
+      # run + test를 의존성 순서대로 실행 - 데이터 품질 테스트 실패 시 하위 MV까지 내려가지 않음
+      - name: dbt build
+        run: dbt build --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
+      # dbt-postgres의 materialized_view는 설정 변경 시에만 DDL을 적용하고
+      # 데이터를 자동 refresh하지 않으므로 CONCURRENTLY refresh를 별도로 트리거
       - name: Refresh materialized views (CONCURRENTLY)
         run: dbt run-operation refresh_materialized_views --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
-      - name: Notify Slack on failure
-        if: failure()
+      - name: Record successful run
+        if: success()
         run: |
-          curl -X POST -H 'Content-type: application/json' \
-            --data '{"text":"dbt-pilot 파이프라인 실패: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
-            "${{ secrets.SLACK_WEBHOOK_URL }}"
+          python pipeline/observability/record_run.py \
+            --status success \
+            --started-at "${{ steps.timing.outputs.started_at }}" \
+            --finished-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --rows-ingested "${{ steps.ingest.outputs.rows_ingested }}" \
+            --github-run-id "${{ github.run_id }}"
+
+      - name: Extract failure reason
+        if: failure()
+        id: failure_reason
+        run: |
+          {
+            echo "message<<PIPELINE_EOF"
+            python pipeline/observability/extract_failure.py
+            echo "PIPELINE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record failed run
+        if: failure()
+        env:
+          ERROR_MESSAGE: ${{ steps.failure_reason.outputs.message }}
+        run: |
+          python pipeline/observability/record_run.py \
+            --status failure \
+            --started-at "${{ steps.timing.outputs.started_at }}" \
+            --finished-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --rows-ingested "${{ steps.ingest.outputs.rows_ingested }}" \
+            --error-message "$ERROR_MESSAGE" \
+            --github-run-id "${{ github.run_id }}"
+
+      # 5분 주기 배치라 일시적 오류로도 실패가 잦을 수 있어, 매 실패마다 알리지 않고
+      # 연속 실패가 임계값(배수)에 도달했을 때만 Slack으로 알림 (알림 피로 방지)
+      - name: Check consecutive failure streak
+        if: failure()
+        id: alert_check
+        run: python pipeline/observability/should_alert.py
+
+      - name: Notify Slack (repeated failures only)
+        if: failure() && steps.alert_check.outputs.alert == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ERROR_MESSAGE: ${{ steps.failure_reason.outputs.message }}
+          FAILURE_STREAK: ${{ steps.alert_check.outputs.streak }}
+        run: python pipeline/observability/notify_slack.py

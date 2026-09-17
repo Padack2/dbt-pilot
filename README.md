@@ -11,23 +11,32 @@ GitHub Public Events API 데이터를 dbt incremental 모델로 관리하고,
 apps/web/          Next.js 대시보드 + API Routes (pnpm workspace)
 pipeline/dbt/       dbt 프로젝트 (staging → precomputed_events(incremental) → MV 3종)
 pipeline/ingest/    GitHub Events API 수집 스크립트 (Python)
-pipeline/sql/       DB 스키마(raw_events)·롤 분리 SQL (admin이 최초 1회 직접 실행)
-.github/workflows/  5분 주기 수집 + dbt run + MV refresh 워크플로우
+pipeline/sql/           DB 스키마(raw_events, pipeline_runs)·롤 분리 SQL (admin이 최초 1회 직접 실행)
+pipeline/observability/ 파이프라인 실행 이력 기록 + 연속 실패 시 Slack 알림
+.github/workflows/      5분 주기 수집 + dbt build + MV refresh 워크플로우
 ```
 
 MV 3종(`mv_daily_trend`, `mv_repo_ranking`, `mv_event_type_dist`)은 dbt-postgres의
 `materialized_view` materialization으로 정의되어 있어 `manifest.json`의 의존성 그래프에
 그대로 잡힌다. 다만 Postgres는 `dbt run`만으로 MV 데이터를 자동 refresh하지 않으므로,
-`dbt run` 이후 `dbt run-operation refresh_materialized_views`로
+`dbt build` 이후 `dbt run-operation refresh_materialized_views`로
 `REFRESH MATERIALIZED VIEW CONCURRENTLY`를 별도로 트리거한다.
+
+### 워크플로우 설계 포인트
+
+- **중복 실행 방지**: `concurrency` 그룹으로 이전 실행이 5분을 넘기면 다음 트리거를 큐잉 (incremental 상태 꼬임 방지)
+- **테스트 게이팅**: `dbt run` 대신 `dbt build`를 사용해 모델 실행과 동시에 `not_null`/`unique` 테스트를 의존성 순서대로 검증 — 실패 시 하위 MV까지 전파되지 않음
+- **실행 이력**: 매 실행마다 성공/실패, 처리 row 수, 에러 메시지를 `pipeline_runs` 테이블에 기록. 대시보드가 GitHub Actions API 없이 DB만으로 "모델 상태/마지막 실행 시각"을 보여줄 수 있음
+- **알림 피로 방지**: 5분 주기 배치라 일시적 오류로도 실패가 잦을 수 있어, 매 실패마다 알리지 않고 연속 실패가 `FAILURE_ALERT_THRESHOLD`(기본 3)의 배수에 도달했을 때만 Slack 알림
 
 ## DB 최초 셋업 (admin 권한, Neon SQL Editor)
 
-이미 만들어진 Neon DB에 아래 두 스크립트를 순서대로 실행한다.
+이미 만들어진 Neon DB에 아래 스크립트를 순서대로 실행한다.
 
 ```bash
-psql "$ADMIN_DATABASE_URL" -f pipeline/sql/schema.sql   # raw_events 테이블 + 인덱스
-psql "$ADMIN_DATABASE_URL" -f pipeline/sql/roles.sql    # batch_user / readonly_user 롤 분리
+psql "$ADMIN_DATABASE_URL" -f pipeline/sql/schema.sql          # raw_events 컬럼/인덱스 보강 (ALTER)
+psql "$ADMIN_DATABASE_URL" -f pipeline/sql/roles.sql           # batch_user / readonly_user 롤 분리
+psql "$ADMIN_DATABASE_URL" -f pipeline/sql/pipeline_runs.sql   # 파이프라인 실행 이력 테이블 (신규)
 ```
 
 `roles.sql`의 `CHANGE_ME` 비밀번호는 실행 전 실제 값으로 바꿀 것.
@@ -49,7 +58,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp profiles.yml.example ~/.dbt/profiles.yml
 # PGHOST / PGUSER / PGPASSWORD / PGDATABASE 환경변수 설정 (batch_user 계정) 후
-dbt run
+dbt build
 dbt run-operation refresh_materialized_views
 ```
 
@@ -70,12 +79,12 @@ python ingest.py
 
 ## GitHub Actions Secrets
 
-`.github/workflows/ingest.yml`이 5분마다 수집 → dbt run → MV refresh를 실행한다.
+`.github/workflows/ingest.yml`이 5분마다 수집 → dbt build → MV refresh를 실행한다.
 리포지토리 Settings → Secrets에 아래 값을 등록해야 한다.
 
 | Secret | 용도 |
 |--------|------|
-| `DATABASE_URL_BATCH` | 수집 스크립트 DB 접속 (배치 롤) |
+| `DATABASE_URL_BATCH` | 수집/실행이력 기록 스크립트 DB 접속 (배치 롤) |
 | `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | dbt profiles.yml용 (배치 롤과 동일 계정) |
 | `GH_EVENTS_TOKEN` | GitHub Events API rate limit 상향용 (선택) |
-| `SLACK_WEBHOOK_URL` | 파이프라인 실패 알림 |
+| `SLACK_WEBHOOK_URL` | 연속 실패 시 파이프라인 알림 |

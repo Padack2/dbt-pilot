@@ -61,6 +61,11 @@ def main() -> None:
 
     print(f"수집 완료: {len(rows)}건")
 
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a") as f:
+            f.write(f"rows_ingested={len(rows)}\n")
+
 
 if __name__ == "__main__":
     main()
