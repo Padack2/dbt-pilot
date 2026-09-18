@@ -19,3 +19,10 @@ export async function getLatestMvRefreshStatus(): Promise<MvRefreshStatus[]> {
     finishedAt: row.finished_at,
   }));
 }
+
+export async function getLastRefreshStartedAt(): Promise<Date | null> {
+  const { rows } = await readonlyPool.query(
+    `select max(started_at) as last_started_at from mv_refresh_log`
+  );
+  return rows[0]?.last_started_at ?? null;
+}

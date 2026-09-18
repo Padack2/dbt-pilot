@@ -75,6 +75,14 @@ body {
   padding: 40px 20px 64px;
 }
 
+.dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .dashboard-header h1 {
   margin: 0;
   font-size: 24px;
@@ -293,6 +301,176 @@ body {
   margin-top: 6px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.refresh-banner {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.refresh-banner.success {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.refresh-banner.error {
+  color: var(--failure);
+  border-color: var(--failure);
+}
+
+.refresh-banner.info {
+  color: var(--text-muted);
+}
+
+.refresh-progress {
+  margin-bottom: 16px;
+}
+
+.refresh-progress-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.refresh-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.refresh-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-muted);
+}
+
+.refresh-progress-item.running .refresh-progress-dot {
+  background: var(--accent);
+}
+
+.refresh-progress-item.done .refresh-progress-dot {
+  background: var(--success);
+}
+
+.refresh-progress-item.error .refresh-progress-dot {
+  background: var(--failure);
+}
+
+.refresh-progress-name {
+  flex: 1;
+}
+
+.refresh-progress-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.refresh-progress-item.running .refresh-progress-status {
+  color: var(--accent);
+}
+
+.refresh-progress-item.done .refresh-progress-status {
+  color: var(--success);
+}
+
+.refresh-progress-item.error .refresh-progress-status {
+  color: var(--failure);
+}
+
+.model-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.model-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-graph-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.model-graph-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.model-graph-node {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4px 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 60px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.rank-row-label {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-row-bar-track {
+  background: var(--border);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.rank-row-bar-fill {
+  background: var(--accent);
+  height: 100%;
+  border-radius: 4px;
+}
+
+.rank-row-value {
+  color: var(--text-muted);
+  text-align: right;
 }
 
 .growth-charts {

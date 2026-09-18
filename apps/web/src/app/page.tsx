@@ -1,6 +1,7 @@
 import { getTrendingRepos } from "@/lib/trending-repos";
 import { getTopicRanking, getLanguageRanking } from "@/lib/trending-rankings";
 import { getRepoDailyGrowth } from "@/lib/trending-growth";
+import { getRepoScoreRanking, getLanguageScoreRanking } from "@/lib/trending-score";
 import { BarChart } from "@/components/BarChart";
 import {
   getAvailableRankingDates,
@@ -45,14 +46,19 @@ export default async function Home({
   const parsedLimit = typeof sp.limit === "string" ? parseInt(sp.limit, 10) : NaN;
   const selectedLimit = isRankingLimit(parsedLimit) ? parsedLimit : 10;
 
-  const [trendingRepos, topicRanking, languageRanking, ranking] = await Promise.all([
-    getTrendingRepos(TRENDING_REPOS_LIMIT),
-    getTopicRanking(),
-    getLanguageRanking(),
-    selectedDate
-      ? getRepoRanking(selectedDate, selectedMetric, selectedLimit)
-      : Promise.resolve([]),
-  ]);
+  const [trendingRepos, topicRanking, languageRanking, ranking, repoScoreRanking, languageScoreRanking] =
+    await Promise.all([
+      getTrendingRepos(TRENDING_REPOS_LIMIT),
+      getTopicRanking(),
+      getLanguageRanking(),
+      selectedDate
+        ? getRepoRanking(selectedDate, selectedMetric, selectedLimit)
+        : Promise.resolve([]),
+      getRepoScoreRanking(10),
+      getLanguageScoreRanking(10),
+    ]);
+
+  const maxLanguageScore = Math.max(1, ...languageScoreRanking.map((row) => row.totalScore));
 
   const topRepo = trendingRepos[0];
   const topTopic = topicRanking[0];
@@ -242,6 +248,69 @@ export default async function Home({
           </section>
         </>
       )}
+
+      <h2 className="section-title">레포 점수 랭킹</h2>
+      <p className="section-caption">Star·Fork·최근 성장세를 가중합산한 종합 점수 기준</p>
+      <div className="analysis-grid">
+        <section>
+          {repoScoreRanking.length === 0 ? (
+            <section className="card">
+              <p className="empty-state">아직 표시할 점수 데이터가 없습니다.</p>
+            </section>
+          ) : (
+            <section className="card table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Repo</th>
+                    <th>Language</th>
+                    <th>Star</th>
+                    <th>Fork</th>
+                    <th>점수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {repoScoreRanking.map((row, index) => (
+                    <tr key={row.repoName}>
+                      <td>{index + 1}</td>
+                      <td>{row.repoName}</td>
+                      <td>{row.language ?? "-"}</td>
+                      <td>{row.stars.toLocaleString("ko-KR")}</td>
+                      <td>{row.forks.toLocaleString("ko-KR")}</td>
+                      <td>{Math.round(row.score).toLocaleString("ko-KR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </section>
+
+        <section>
+          <section className="card">
+            <div className="card-label">언어별 점수 합계</div>
+            {languageScoreRanking.length === 0 ? (
+              <p className="empty-state">언어별 점수 데이터가 없습니다.</p>
+            ) : (
+              <div className="rank-list">
+                {languageScoreRanking.map((row) => (
+                  <div className="rank-row" key={row.language}>
+                    <div className="rank-row-label">{row.language}</div>
+                    <div className="rank-row-bar-track">
+                      <div
+                        className="rank-row-bar-fill"
+                        style={{ width: `${(row.totalScore / maxLanguageScore) * 100}%` }}
+                      />
+                    </div>
+                    <div className="rank-row-value">{Math.round(row.totalScore).toLocaleString("ko-KR")}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </section>
+      </div>
 
       <h2 className="section-title">리포 랭킹 Top N</h2>
       <p className="section-caption">최근 활동 데이터 기준 순위 (급상승 레포와는 다른 기준입니다)</p>
