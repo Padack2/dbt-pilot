@@ -52,27 +52,27 @@ dbt incremental model 실행
 ## 기능 범위
 
 ### Phase 1 — 핵심 (MVP)
-- [ ] GitHub Actions 5분 주기 수집 워크플로우
-- [ ] dbt incremental model 3~4개 구성
-- [ ] Materialized View 3종 + REFRESH CONCURRENTLY 적용
-- [ ] 웹 대시보드
+- [V] GitHub Actions 5분 주기 수집 워크플로우
+- [V] dbt incremental model 3~4개 구성
+- [V] Materialized View 3종 + REFRESH CONCURRENTLY 적용
+- [V] 웹 대시보드
   - 모델 목록 및 상태 (성공/실패/마지막 실행 시각)
   - 의존성 그래프 시각화 (`manifest.json` 파싱)
   - 용량 / row count 표시
   - 수동 REFRESH 트리거 버튼
-- [ ] 실패 시 GitHub Actions → Slack 웹훅 알림
+- [V] 실패 시 GitHub Actions → Slack 웹훅 알림
 
 ### Phase 2 — LLM 챗봇
-- [ ] Gemini 2.0 Flash API 연동
-- [ ] 오류 원인 분석: `run_results.json` 오류 메시지 + 모델 SQL을 컨텍스트로 전달
-- [ ] 자연어 명령 처리: "전체 REFRESH 해줘", "mv_repo_ranking 상태 알려줘"
-- [ ] 허용 액션 화이트리스트 (REFRESH, SELECT만 허용 / DELETE·INSERT 금지)
-- [ ] LLM 벤더 교체 가능한 추상화 레이어 설계
+- [V] Gemini 2.0 Flash API 연동
+- [V] 오류 원인 분석: `run_results.json` 오류 메시지 + 모델 SQL을 컨텍스트로 전달
+- [V] 자연어 명령 처리: "전체 REFRESH 해줘", "mv_repo_ranking 상태 알려줘"
+- [V] 허용 액션 화이트리스트 (REFRESH, SELECT만 허용 / DELETE·INSERT 금지)
+- [V] LLM 벤더 교체 가능한 추상화 레이어 설계
 
 ### Phase 3 — 심화 (여유 시)
 - [ ] Grafana 연동 (배치 실행 시간 트렌드, 이상 탐지)
 - [ ] 모델별 실행 시간 이상 탐지 (평균 대비 N배 초과 시 알림)
-- [ ] 수집 데이터 기반 분석 뷰 ("오늘 가장 Star 많이 받은 리포", "언어별 활동 트렌드")
+- [V] 수집 데이터 기반 분석 뷰 ("오늘 가장 Star 많이 받은 리포", "언어별 활동 트렌드")
 
 ---
 

@@ -1,11 +1,23 @@
 import type { LlmClient, ToolDefinition } from "./types";
 
 // 모델 교체가 필요하면 이 상수만 바꾸면 됨 (예: 신규 Flash 세대 출시 시).
-const GEMINI_MODEL = "gemini-3.8-flash";
+// gemini-3.8-flash는 무료 티어 일일 한도가 20회로 유독 작아(신형 프리뷰 성격 추정) 직접
+// 429로 재현 확인 후 3.6-flash로 내려씀 — function calling 동작도 재검증 완료.
+const GEMINI_MODEL = "gemini-3.6-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // 모델이 도구를 계속 호출하며 끝나지 않는 경우를 막는 안전장치.
 const MAX_TOOL_ROUNDS = 4;
+
+// Gemini 무료 티어는 "모델이 지금 수요가 많다"는 503(UNAVAILABLE)을 실제로 자주 반환한다
+// (개발 중 curl 테스트에서도 여러 번 재현됨). 429도 같은 성격 — 재시도하면 대부분 바로 풀린다.
+const RETRYABLE_STATUS = new Set([429, 503]);
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Gemini generateContent의 실제 파트 구조 — text/functionCall/functionResponse/thoughtSignature가
 // 하나의 part 객체에 함께(선택적으로) 실릴 수 있어 엄격한 discriminated union 대신 전부 optional로 모델링.
@@ -32,18 +44,36 @@ function toGeminiTools(tools: ToolDefinition[] | undefined) {
 }
 
 async function callGemini(apiKey: string, body: Record<string, unknown>) {
-  const res = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify(body),
-  });
+  let lastError: Error = new Error("Gemini API 호출 실패");
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API 오류 (${res.status}): ${errText.slice(0, 300)}`);
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    let retryable = true;
+    try {
+      const res = await fetch(GEMINI_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        return await res.json();
+      }
+
+      const errText = await res.text();
+      lastError = new Error(`Gemini API 오류 (${res.status}): ${errText.slice(0, 300)}`);
+      retryable = RETRYABLE_STATUS.has(res.status);
+    } catch (err) {
+      // fetch 자체가 실패(네트워크 오류)한 경우도 재시도 대상으로 취급.
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    if (!retryable || attempt === MAX_RETRIES) {
+      throw lastError;
+    }
+    await sleep(RETRY_DELAY_MS * attempt);
   }
 
-  return res.json();
+  throw lastError;
 }
 
 export const geminiClient: LlmClient = {

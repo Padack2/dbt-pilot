@@ -35,7 +35,7 @@ export function ChatDrawer() {
           <div className="chat-drawer-header">
             <div>
               <h2>운영 어시스턴트</h2>
-              <p className="chat-drawer-subtitle">파이프라인·모델 상태를 자연어로 질문 (읽기 전용)</p>
+              <p className="chat-drawer-subtitle">파이프라인·모델 상태를 자연어로 질문, REFRESH도 요청 가능</p>
             </div>
             <button
               type="button"

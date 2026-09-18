@@ -1,10 +1,13 @@
+import { revalidatePath } from "next/cache";
 import type { ToolDefinition } from "./llm/types";
 import { searchTrendingRepos } from "./trending-repos";
 import { getRecentPipelineRuns } from "./pipeline-runs";
 import { getDailyEventCounts, getRepoGrowthRanking } from "./daily-trend";
+import { runMvRefresh } from "./mv-refresh-runner";
 
-// 챗봇이 미리 준비된 컨텍스트 스냅샷(chat-context.ts)에 없는 걸 물어볼 때 호출하는 읽기 전용
-// 도구들. 전부 이미 있는 파라미터화 쿼리 함수를 감쌀 뿐, LLM이 SQL을 직접 만들지 않는다.
+// 챗봇이 미리 준비된 컨텍스트 스냅샷(chat-context.ts)에 없는 걸 물어볼 때 호출하는 도구들.
+// refresh_materialized_views를 빼면 전부 읽기 전용. 전부 이미 있는 파라미터화 쿼리/Server
+// Action 로직을 감쌀 뿐, LLM이 SQL을 직접 만들거나 임의 코드를 실행하지 않는다.
 export const CHAT_TOOLS: ToolDefinition[] = [
   {
     name: "search_trending_repos",
@@ -102,6 +105,25 @@ export const CHAT_TOOLS: ToolDefinition[] = [
         limit: typeof args.limit === "number" ? args.limit : undefined,
       });
       return { ranking };
+    },
+  },
+  {
+    name: "refresh_materialized_views",
+    description:
+      "대시보드의 Materialized View 6개를 전부 REFRESH해서 최신 데이터로 갱신한다. 사용자가 " +
+      "'새로고침해줘', '전체 REFRESH 해줘', 'MV 갱신해줘'처럼 명시적으로 요청했을 때만 호출한다 " +
+      "(단순 상태 질문에는 호출하지 말 것). 5분 쿨다운이 있어 너무 자주 요청하면 거부될 수 있다 " +
+      "— 이건 이 도구가 판단하는 게 아니라 서버가 강제하는 제약이다.",
+    parameters: { type: "object", properties: {} },
+    async execute() {
+      const result = await runMvRefresh();
+      if (result.status === "success" || result.status === "error") {
+        revalidatePath("/models");
+      }
+      if (result.status === "cooldown") {
+        return { status: result.status, remainingMinutes: Math.ceil(result.remainingMs / 60000) };
+      }
+      return result;
     },
   },
 ];
