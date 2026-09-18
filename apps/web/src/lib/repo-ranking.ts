@@ -4,10 +4,10 @@ export const RANKING_METRICS = ["total_activity", "star_count", "fork_count", "p
 export type RankingMetric = (typeof RANKING_METRICS)[number];
 
 export const RANKING_METRIC_LABELS: Record<RankingMetric, string> = {
-  total_activity: "전체 활동",
-  star_count: "Star",
-  fork_count: "Fork",
-  push_count: "Push",
+  total_activity: "전체 이벤트",
+  star_count: "Star 이벤트",
+  fork_count: "Fork 이벤트",
+  push_count: "Push 이벤트",
 };
 
 export const RANKING_LIMITS = [5, 10, 20, 50] as const;
@@ -27,6 +27,7 @@ export type RepoRankingRow = {
   forkCount: number;
   pushCount: number;
   totalActivity: number;
+  isTrending: boolean;
 };
 
 export async function getAvailableRankingDates(limit = 14): Promise<string[]> {
@@ -47,10 +48,13 @@ export async function getRepoRanking(
 ): Promise<RepoRankingRow[]> {
   // metric은 컬럼명이라 바인드 파라미터로 넘길 수 없어 화이트리스트(RANKING_METRICS) 검증을 거친 값만 여기 도달함
   const { rows } = await readonlyPool.query(
-    `select repo_name, star_count, fork_count, push_count, total_activity
-     from mv_repo_ranking
-     where event_date = $1
-     order by ${metric} desc
+    `select r.repo_name, r.star_count, r.fork_count, r.push_count, r.total_activity,
+            exists(
+              select 1 from trending_repos_snapshot t where t.repo_name = r.repo_name
+            ) as is_trending
+     from mv_repo_ranking r
+     where r.event_date = $1
+     order by r.${metric} desc
      limit $2`,
     [date, limit]
   );
@@ -61,5 +65,6 @@ export async function getRepoRanking(
     forkCount: row.fork_count,
     pushCount: row.push_count,
     totalActivity: row.total_activity,
+    isTrending: row.is_trending,
   }));
 }

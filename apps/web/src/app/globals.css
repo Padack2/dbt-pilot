@@ -770,3 +770,12 @@ tbody tr:hover td {
   background: var(--failure-bg);
   color: var(--failure);
 }
+
+.badge-trending {
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
+.badge-inline {
+  margin-left: 6px;
+}

@@ -1,6 +1,6 @@
 import { getTrendingRepos } from "@/lib/trending-repos";
 import { getTopicRanking, getLanguageRanking } from "@/lib/trending-rankings";
-import { getRepoDailyGrowth } from "@/lib/trending-growth";
+import { getRepoDailyGrowth, getTotalDailyGrowth } from "@/lib/trending-growth";
 import { getRepoScoreRanking, getLanguageScoreRanking } from "@/lib/trending-score";
 import { BarChart } from "@/components/BarChart";
 import {
@@ -46,17 +46,25 @@ export default async function Home({
   const parsedLimit = typeof sp.limit === "string" ? parseInt(sp.limit, 10) : NaN;
   const selectedLimit = isRankingLimit(parsedLimit) ? parsedLimit : 10;
 
-  const [trendingRepos, topicRanking, languageRanking, ranking, repoScoreRanking, languageScoreRanking] =
-    await Promise.all([
-      getTrendingRepos(TRENDING_REPOS_LIMIT),
-      getTopicRanking(),
-      getLanguageRanking(),
-      selectedDate
-        ? getRepoRanking(selectedDate, selectedMetric, selectedLimit)
-        : Promise.resolve([]),
-      getRepoScoreRanking(10),
-      getLanguageScoreRanking(10),
-    ]);
+  const [
+    trendingRepos,
+    topicRanking,
+    languageRanking,
+    ranking,
+    repoScoreRanking,
+    languageScoreRanking,
+    totalDailyGrowth,
+  ] = await Promise.all([
+    getTrendingRepos(TRENDING_REPOS_LIMIT),
+    getTopicRanking(),
+    getLanguageRanking(),
+    selectedDate
+      ? getRepoRanking(selectedDate, selectedMetric, selectedLimit)
+      : Promise.resolve([]),
+    getRepoScoreRanking(10),
+    getLanguageScoreRanking(10),
+    getTotalDailyGrowth(14),
+  ]);
 
   const maxLanguageScore = Math.max(1, ...languageScoreRanking.map((row) => row.totalScore));
 
@@ -179,7 +187,32 @@ export default async function Home({
         </section>
       </div>
 
-      <h2 className="section-title">일별 성장 추이</h2>
+      <h2 className="section-title">일별 성장 추이 (전체 합계)</h2>
+      <p className="section-caption">추적 중인 급상승 레포 전체를 합산한 하루 단위 스타/포크 증가량</p>
+      {totalDailyGrowth.length === 0 ? (
+        <section className="card">
+          <p className="empty-state">아직 표시할 성장 추이 데이터가 없습니다. 스냅샷이 이틀 이상 쌓이면 증가량이 계산됩니다.</p>
+        </section>
+      ) : (
+        <div className="growth-charts">
+          <section className="card">
+            <div className="card-label">일별 Star 증가량 합계</div>
+            <BarChart
+              color="#facc15"
+              data={totalDailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.totalStarGrowth }))}
+            />
+          </section>
+          <section className="card">
+            <div className="card-label">일별 Fork 증가량 합계</div>
+            <BarChart
+              color="#38bdf8"
+              data={totalDailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.totalForkGrowth }))}
+            />
+          </section>
+        </div>
+      )}
+
+      <h2 className="section-title">레포별 상세 성장 추이</h2>
       <p className="section-caption">선택한 레포의 하루 단위 스타/포크 증가량</p>
       <section className="card filter-card">
         <form className="filter-form">
@@ -312,8 +345,13 @@ export default async function Home({
         </section>
       </div>
 
-      <h2 className="section-title">리포 랭킹 Top N</h2>
-      <p className="section-caption">최근 활동 데이터 기준 순위 (급상승 레포와는 다른 기준입니다)</p>
+      <h2 className="section-title">레포 활동 이벤트 랭킹</h2>
+      <p className="section-caption">
+        선택한 날짜에 5분 주기 이벤트 샘플에서 관측된 Star/Fork/Push 이벤트 발생 횟수 기준
+        순위입니다(레포의 실제 누적 스타 수가 아닙니다). 위의 &ldquo;급상승 레포&rdquo;는 별도로
+        8시간마다 수집하는 다른 데이터라 기준이 다릅니다. 두 기준 모두에 해당하는 레포는 트렌딩
+        뱃지로 표시.
+      </p>
       <section className="card filter-card">
         <form className="filter-form">
           <div className="field">
@@ -363,17 +401,22 @@ export default async function Home({
               <tr>
                 <th>#</th>
                 <th>Repo</th>
-                <th>Star</th>
-                <th>Fork</th>
-                <th>Push</th>
-                <th>전체 활동</th>
+                <th>Star 이벤트</th>
+                <th>Fork 이벤트</th>
+                <th>Push 이벤트</th>
+                <th>전체 이벤트</th>
               </tr>
             </thead>
             <tbody>
               {ranking.map((row, index) => (
                 <tr key={row.repoName}>
                   <td>{index + 1}</td>
-                  <td>{row.repoName}</td>
+                  <td>
+                    {row.repoName}
+                    {row.isTrending && (
+                      <span className="badge badge-trending badge-inline">트렌딩</span>
+                    )}
+                  </td>
                   <td>{row.starCount}</td>
                   <td>{row.forkCount}</td>
                   <td>{row.pushCount}</td>
