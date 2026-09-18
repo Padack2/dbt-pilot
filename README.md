@@ -79,6 +79,38 @@ python ingest.py
 `.env.example` 참고. Neon 접속 정보는 배치용/읽기전용 롤을 분리해서 발급한다
 (`pipeline/sql/roles.sql`).
 
+## 웹 대시보드 배포 (Vercel)
+
+`apps/web`은 pnpm workspace 안의 패키지 하나라, Vercel 프로젝트 생성 시 아래처럼 설정한다.
+
+1. Vercel 대시보드 → Add New → Project → 이 GitHub 레포(`dbt-pilot`) Import
+2. **Root Directory**를 `apps/web`으로 지정 (Framework Preset은 Next.js가 자동 감지됨).
+   Root Directory를 지정해도 git 저장소 전체가 클론되고, 설치도 리포 루트의
+   `pnpm-lock.yaml`/`pnpm-workspace.yaml` 기준으로 동작한다 (Vercel의 pnpm workspace 지원)
+3. **Environment Variables**에 아래 등록 (`apps/web/.env.local`과 동일한 값)
+
+   | 변수 | 비고 |
+   |---|---|
+   | `DATABASE_URL_READONLY` | 조회 전용 |
+   | `DATABASE_URL_BATCH` | 수동 REFRESH 버튼(Server Action) 전용, ADR-006 참고 |
+   | `GEMINI_API_KEY` | 우측 하단 운영 어시스턴트 챗봇(Drawer) 전용, ADR-009 참고 |
+
+4. Deploy
+
+### 배포 시 주의할 점 (로컬에서 직접 검증한 내용)
+
+- `/models`의 모델 의존성 그래프(`lib/model-graph.ts`)는 `pipeline/dbt/models`의 SQL 파일을
+  런타임에 직접 읽는다. Vercel 서버리스 함수의 파일 트레이싱은 import로 연결되지 않은 파일을
+  자동 포함하지 않아서, `apps/web/next.config.mjs`의 `outputFileTracingIncludes`로 명시해뒀다
+  (ADR-007). Root Directory를 `apps/web`으로 잡아도 `../../pipeline/dbt/models` 상대 경로는
+  그대로 유효함 — `pnpm build` 후 `.next/server/app/models/page.js.nft.json`에 해당 SQL
+  파일들이 실제로 포함되는지 확인 완료
+- REFRESH 진행 상황 표시(`lib/refresh-progress.ts`)는 프로세스 인메모리 상태라, 서버리스
+  인스턴스가 여러 개 뜨면 REFRESH를 실행 중인 인스턴스와 폴링 요청이 도착한 인스턴스가 달라
+  "진행 중" 표시가 안 보일 수 있음(최종 완료/실패 배너는 리다이렉트라 항상 정확함). ADR-008 참고
+- DB 접속 문자열이 이미 Neon pooler 엔드포인트(`-pooler`)라 서버리스의 짧고 잦은 커넥션
+  패턴에도 별도 조치 없이 동작함
+
 ## GitHub Actions Secrets
 
 `.github/workflows/ingest.yml`이 (외부 cron이 트리거할 때마다) 수집 → dbt build → MV refresh를
