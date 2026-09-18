@@ -8,6 +8,7 @@ raw_events 테이블/인덱스는 pipeline/sql/schema.sql로 미리 생성되어
 """
 
 import os
+import time
 
 import psycopg2
 import psycopg2.extras
@@ -16,6 +17,9 @@ import requests
 GITHUB_EVENTS_URL = "https://api.github.com/events"
 # GitHub Events API는 페이지당 30건 고정, 최대 10페이지(300건)까지만 허용
 MAX_PAGES = 10
+# /events는 시간당 5000회와 별개로 X-Poll-Interval 기반 폴링 제약이 따로 있어(GitHub REST API 문서),
+# 페이지를 딜레이 없이 연속 요청하면 종종 403 rate limit에 걸린다 — 페이지 사이에 짧게 쉰다.
+PAGE_DELAY_SECONDS = 1.0
 
 INSERT_SQL = """
 insert into raw_events (event_id, type, actor_login, actor_id, repo_name, repo_id, payload, public, created_at)
@@ -32,14 +36,36 @@ def fetch_events() -> list[dict]:
 
     events = []
     for page in range(1, MAX_PAGES + 1):
-        response = requests.get(
-            GITHUB_EVENTS_URL, headers=headers, params={"page": page}, timeout=30
-        )
-        response.raise_for_status()
+        try:
+            response = requests.get(
+                GITHUB_EVENTS_URL, headers=headers, params={"page": page}, timeout=30
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            # rate limit(403/429)은 지금까지 모은 데이터로 계속 진행 — event_id 중복 제거가
+            # 있어 다음 5분 주기 실행이 자연스럽게 이어서 채운다. 그 외 에러(인증 실패 등)는
+            # 그대로 실패시켜야 조용히 묻히지 않는다.
+            is_rate_limited = (
+                err.response is not None
+                and err.response.status_code in (403, 429)
+                and "rate limit" in err.response.text.lower()
+            )
+            if not is_rate_limited:
+                raise
+            print(
+                f"GitHub API rate limit로 {page}페이지에서 중단 — "
+                f"지금까지 모은 {len(events)}건으로 계속 진행"
+            )
+            break
+
         page_events = response.json()
         if not page_events:
             break
         events.extend(page_events)
+
+        if page < MAX_PAGES:
+            time.sleep(PAGE_DELAY_SECONDS)
+
     return events
 
 
