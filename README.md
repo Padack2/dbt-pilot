@@ -123,6 +123,33 @@ python ingest.py
 - DB 접속 문자열이 이미 Neon pooler 엔드포인트(`-pooler`)라 서버리스의 짧고 잦은 커넥션
   패턴에도 별도 조치 없이 동작합니다
 
+## Grafana 대시보드 연동
+
+대시보드 안에 새 메뉴를 넣거나 네비게이션에 링크를 추가하는 방식이 아니라, README에
+스크린샷으로 보여주는 방식입니다. Grafana Cloud의 **Public dashboard** 기능은 Postgres
+같은 SQL 데이터소스를 지원하지 않아서(익명 방문자가 볼 때마다 원본 DB에 SQL을 그대로
+재실행시키는 구조라 보안상 막혀 있습니다) 로그인 없이 볼 수 있는 라이브 링크를 발급할
+방법이 없습니다 — 그래서 로그인이 필요한 내부용 대시보드를 실제로 운영하고, 그 화면을
+캡처해 README에 넣는 쪽을 택했습니다. 아래는 실제 운영 중인 Grafana Cloud 대시보드
+예시입니다.
+
+![Grafana 대시보드 예시](./docs/images/grafana-dashboard.png)
+
+Grafana 쪽 준비는 아래 순서로 진행해 주세요.
+
+1. [Grafana Cloud](https://grafana.com/auth/sign-up/create-user) 무료 티어로 가입합니다
+2. Grafana 관리 화면에서 **Connections → Data sources → Add data source → PostgreSQL**을
+   선택하고, Neon의 `readonly_user` 접속 정보로 등록합니다
+   - Host: Neon 콘솔의 pooler 엔드포인트 (`...-pooler.<region>.aws.neon.tech:5432`)
+   - Database / User / Password: `readonly_user` 계정 값 (`DATABASE_URL_READONLY` 참고)
+   - TLS/SSL Mode: `require`
+3. **Dashboards → New → Import**에서 이 레포의 [`pipeline/grafana/dashboard.json`](./pipeline/grafana/dashboard.json)을
+   업로드합니다. Import 화면에서 데이터소스를 고르라고 나오면 2번에서 만든 데이터소스를
+   선택합니다. 파이프라인 성공률/실행 이력, MV 리프레시 현황, 일별 이벤트 추이, 이벤트 타입
+   분포, 레포 활동 랭킹 패널이 기본으로 포함되어 있습니다
+4. 화면을 캡처해 `docs/images/grafana-dashboard.png`로 교체하면 README의 스크린샷이
+   최신 상태로 갱신됩니다(자동 동기화는 아니라 수동으로 가끔 갱신해 주면 됩니다)
+
 ## GitHub Actions Secrets
 
 `.github/workflows/ingest.yml`이 (외부 cron이 트리거할 때마다) 수집 → dbt build → MV refresh를

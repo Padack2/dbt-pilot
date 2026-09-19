@@ -57,6 +57,15 @@ jobs:
       - name: Refresh materialized views (CONCURRENTLY)
         run: dbt run-operation refresh_materialized_views --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
+      # raw_events는 삭제 로직이 없으면 무한정 커져 Neon 무료 티어 용량을 넘기므로,
+      # 이미 precomputed_events/MV 집계가 끝난 7일 이상 지난 원본 이벤트를 정리한다 (ADR-013)
+      - name: Prune raw_events older than 7 days
+        run: dbt run-operation prune_raw_events --project-dir pipeline/dbt --profiles-dir ~/.dbt
+
+      # precomputed_events도 보존 정책이 없으면 무기한 커지므로 동일하게 7일만 유지 (ADR-014)
+      - name: Prune precomputed_events older than 7 days
+        run: dbt run-operation prune_precomputed_events --project-dir pipeline/dbt --profiles-dir ~/.dbt
+
       - name: Record successful run
         if: success()
         run: |

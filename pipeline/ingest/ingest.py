@@ -77,7 +77,9 @@ def to_row(event: dict) -> dict:
         "actor_id": event.get("actor", {}).get("id"),
         "repo_name": event.get("repo", {}).get("name"),
         "repo_id": event.get("repo", {}).get("id"),
-        "payload": psycopg2.extras.Json(event.get("payload", {})),
+        # payload(JSONB)는 어디서도 조회하지 않는데 row당 평균 크기의 90%+를 차지해서
+        # (Neon 무료 티어 용량 압박, ADR-014) 더 이상 저장하지 않는다.
+        "payload": None,
         "public": event.get("public", True),
         "created_at": event["created_at"],
     }

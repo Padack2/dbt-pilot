@@ -3,7 +3,7 @@
 - 프로젝트: dbt-pilot
 - DB: Neon PostgreSQL
 - 스키마: public
-- 최종 수정: 2026-09-16
+- 최종 수정: 2026-09-19
 
 ---
 
@@ -13,6 +13,10 @@
 
 GitHub Public Events API (`GET /events`)에서 수집한 원본 이벤트 데이터를 적재하는 테이블.
 5분 주기 GitHub Actions 배치가 INSERT하며, `event_id` 기준 중복 적재 방지.
+저장 용량 관리를 위해 `created_at` 기준 **7일**이 지난 행은 매 파이프라인 실행마다 자동
+삭제된다(`prune_raw_events` 매크로, ADR-013). `precomputed_events`의 incremental 워터마크는
+이 테이블이 아닌 자기 자신 기준이라 평소 실행에는 영향 없음 — `dbt build --full-refresh` 시
+7일 이전 구간만 재구성 불가.
 
 | # | 컬럼명 | 데이터 타입 | NULL | 기본값 | 설명 |
 |---|--------|------------|------|--------|------|
@@ -22,7 +26,7 @@ GitHub Public Events API (`GET /events`)에서 수집한 원본 이벤트 데이
 | 4 | actor_id | BIGINT | NULL | — | GitHub 유저 내부 ID |
 | 5 | repo_name | TEXT | NOT NULL | — | 이벤트가 발생한 리포지터리명 (owner/repo 형태) |
 | 6 | repo_id | BIGINT | NULL | — | GitHub 리포 내부 ID |
-| 7 | payload | JSONB | NULL | — | 이벤트 상세 데이터 (타입마다 구조 상이) |
+| 7 | payload | JSONB | NULL | — | (미사용, 항상 NULL) 과거엔 이벤트 상세 데이터를 저장했으나 row 크기의 93%를 차지하면서 어디서도 조회되지 않아 ADR-014로 저장 중단. 컬럼은 스키마 호환을 위해 유지 |
 | 8 | public | BOOLEAN | NULL | true | 공개 이벤트 여부 |
 | 9 | created_at | TIMESTAMPTZ | NOT NULL | — | 이벤트 발생 시각 (UTC) |
 
@@ -60,6 +64,9 @@ mv_event_type_dist   (2단계: 타입별 분포)
 ### precomputed_events
 
 raw_events에서 날짜/시간 컬럼을 파생하여 하위 MV들이 공통으로 참조하는 선계산 테이블.
+`raw_events`와 동일하게 `created_at` 기준 **7일**이 지난 행은 매 파이프라인 실행마다 자동
+삭제된다(`prune_precomputed_events` 매크로, ADR-014). 아래 MV들은 매 REFRESH마다 이 테이블
+전체를 다시 집계하므로, 7일 이전 구간은 다음 REFRESH부터 랭킹/트렌드 집계에서도 사라진다.
 
 **정의**
 ```sql
