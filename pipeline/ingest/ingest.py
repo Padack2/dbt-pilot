@@ -85,9 +85,23 @@ def to_row(event: dict) -> dict:
     }
 
 
+# raw_events는 actor_login/repo_name이 NOT NULL인데, GitHub이 삭제된/익명화된 계정·레포에
+# 대해 이 필드를 빈 값으로 내려주는 이벤트가 간헐적으로 섞여 있다. execute_batch는 한 건이라도
+# 제약 위반이면 그 배치 전체가 트랜잭션 에러로 실패하므로, insert 전에 걸러낸다.
+REQUIRED_FIELDS = ("actor_login", "repo_name")
+
+
+def is_valid_row(row: dict) -> bool:
+    return all(row[field] for field in REQUIRED_FIELDS)
+
+
 def main() -> None:
     events = fetch_events()
-    rows = [to_row(event) for event in events]
+    all_rows = [to_row(event) for event in events]
+    rows = [row for row in all_rows if is_valid_row(row)]
+    skipped = len(all_rows) - len(rows)
+    if skipped:
+        print(f"actor_login/repo_name 누락으로 {skipped}건 건너뜀")
 
     conn = psycopg2.connect(os.environ["DATABASE_URL_BATCH"])
     try:
