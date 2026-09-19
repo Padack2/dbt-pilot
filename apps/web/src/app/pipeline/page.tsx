@@ -3,9 +3,19 @@ import { formatDuration, formatRelativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-function StatCard({ label, value, tone }: { label: string; value: string; tone?: "success" | "failure" }) {
+function StatCard({
+  label,
+  value,
+  tone,
+  hero,
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "failure";
+  hero?: boolean;
+}) {
   return (
-    <div className="card">
+    <div className={`card ${hero ? "stat-hero" : ""}`}>
       <div className="card-label">{label}</div>
       <div className={`card-value ${tone ? `text-${tone}` : ""}`}>{value}</div>
     </div>
@@ -31,6 +41,7 @@ export default async function PipelinePage() {
 
       <section className="stats-grid">
         <StatCard
+          hero
           label="마지막 실행"
           value={stats.lastRun ? formatRelativeTime(stats.lastRun.startedAt) : "-"}
           tone={stats.lastRun?.status}

@@ -2,7 +2,8 @@ import { getTrendingRepos } from "@/lib/trending-repos";
 import { getTopicRanking, getLanguageRanking } from "@/lib/trending-rankings";
 import { getRepoDailyGrowth, getTotalDailyGrowth } from "@/lib/trending-growth";
 import { getRepoScoreRanking, getLanguageScoreRanking } from "@/lib/trending-score";
-import { BarChart } from "@/components/BarChart";
+import { LineChart } from "@/components/LineChart";
+import { RepoLink } from "@/components/RepoLink";
 import {
   getAvailableRankingDates,
   getRepoRanking,
@@ -18,9 +19,19 @@ export const dynamic = "force-dynamic";
 
 const TRENDING_REPOS_LIMIT = 10;
 
-function HighlightCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function HighlightCard({
+  label,
+  value,
+  sub,
+  hero,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  hero?: boolean;
+}) {
   return (
-    <div className="card">
+    <div className={`card ${hero ? "stat-hero" : ""}`}>
       <div className="card-label">{label}</div>
       <div className="card-value">{value}</div>
       {sub && <div className="card-sub">{sub}</div>}
@@ -86,13 +97,34 @@ export default async function Home({
         <div>
           <h1>분석 결과 조회</h1>
           <p className="subtitle">GitHub 트렌드 / 급상승 레포 분석 결과</p>
+          <p className="intro-text">
+            GitHub Public Events를 dbt incremental 모델로 수집·집계해 급상승 레포와 트렌드를
+            분석하는 개인 데이터 파이프라인 프로젝트입니다.
+          </p>
+          <p className="disclaimer">
+            ※ GitHub Events API 전수 수집이 아니라 5분 주기 샘플링이라 아래 통계는 정확한
+            트렌드 지표가 아닙니다. 정확도보다는 dbt incremental 모델·MV 파이프라인을 직접
+            구현해보는 것이 이 프로젝트의 목적입니다.
+          </p>
         </div>
+        <a
+          href="https://github.com/Padack2/dbt-pilot"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-secondary header-link"
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+          </svg>
+          GitHub
+        </a>
       </header>
 
       <section className="stats-grid">
         <HighlightCard
+          hero
           label="오늘의 1위 레포"
-          value={topRepo ? topRepo.repoName : "-"}
+          value={topRepo ? <RepoLink repoName={topRepo.repoName} /> : "-"}
           sub={topRepo ? `${topRepo.stars.toLocaleString("ko-KR")} ★` : undefined}
         />
         <HighlightCard
@@ -135,7 +167,9 @@ export default async function Home({
                 <tbody>
                   {trendingRepos.map((repo) => (
                     <tr key={repo.repoName}>
-                      <td title={repo.description ?? undefined}>{repo.repoName}</td>
+                      <td title={repo.description ?? undefined}>
+                        <RepoLink repoName={repo.repoName} />
+                      </td>
                       <td>{repo.language ?? "-"}</td>
                       <td>{repo.stars}</td>
                       <td>{repo.forks}</td>
@@ -197,16 +231,18 @@ export default async function Home({
         <div className="growth-charts">
           <section className="card">
             <div className="card-label">일별 Star 증가량 합계</div>
-            <BarChart
-              color="#facc15"
+            <LineChart
+              color="#f2b134"
               data={totalDailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.totalStarGrowth }))}
+              unitPrefix="+"
             />
           </section>
           <section className="card">
             <div className="card-label">일별 Fork 증가량 합계</div>
-            <BarChart
+            <LineChart
               color="#38bdf8"
               data={totalDailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.totalForkGrowth }))}
+              unitPrefix="+"
             />
           </section>
         </div>
@@ -241,16 +277,18 @@ export default async function Home({
           <div className="growth-charts">
             <section className="card">
               <div className="card-label">일별 Star 증가량</div>
-              <BarChart
-                color="#facc15"
+              <LineChart
+                color="#f2b134"
                 data={dailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.starGrowth ?? 0 }))}
+                unitPrefix="+"
               />
             </section>
             <section className="card">
               <div className="card-label">일별 Fork 증가량</div>
-              <BarChart
+              <LineChart
                 color="#38bdf8"
                 data={dailyGrowth.map((d) => ({ label: d.eventDate.slice(5), value: d.forkGrowth ?? 0 }))}
+                unitPrefix="+"
               />
             </section>
           </div>
@@ -307,7 +345,9 @@ export default async function Home({
                   {repoScoreRanking.map((row, index) => (
                     <tr key={row.repoName}>
                       <td>{index + 1}</td>
-                      <td>{row.repoName}</td>
+                      <td>
+                        <RepoLink repoName={row.repoName} />
+                      </td>
                       <td>{row.language ?? "-"}</td>
                       <td>{row.stars.toLocaleString("ko-KR")}</td>
                       <td>{row.forks.toLocaleString("ko-KR")}</td>
@@ -412,7 +452,7 @@ export default async function Home({
                 <tr key={row.repoName}>
                   <td>{index + 1}</td>
                   <td>
-                    {row.repoName}
+                    <RepoLink repoName={row.repoName} />
                     {row.isTrending && (
                       <span className="badge badge-trending badge-inline">트렌딩</span>
                     )}

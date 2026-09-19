@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RepoLink } from "@/components/RepoLink";
 import {
   getRawEventTypes,
   getRawEvents,
@@ -105,7 +106,9 @@ export default async function ExplorerPage({
                   <td>{new Date(event.createdAt).toLocaleString("ko-KR")}</td>
                   <td>{event.type}</td>
                   <td>{event.actorLogin}</td>
-                  <td>{event.repoName}</td>
+                  <td>
+                    <RepoLink repoName={event.repoName} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -185,7 +188,9 @@ export default async function ExplorerPage({
                   <td>{event.eventHour}</td>
                   <td>{event.type}</td>
                   <td>{event.actorLogin}</td>
-                  <td>{event.repoName}</td>
+                  <td>
+                    <RepoLink repoName={event.repoName} />
+                  </td>
                 </tr>
               ))}
             </tbody>

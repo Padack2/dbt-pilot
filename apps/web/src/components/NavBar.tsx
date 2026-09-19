@@ -16,7 +16,23 @@ export function NavBar() {
   return (
     <nav className="navbar">
       <div className="navbar-inner">
-        <span className="navbar-brand">dbt Pilot</span>
+        <span className="navbar-brand">
+          <svg
+            className="navbar-mark"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle cx="4" cy="8" r="2.5" fill="currentColor" />
+            <circle cx="12" cy="3.5" r="2" fill="currentColor" opacity="0.55" />
+            <circle cx="12" cy="12.5" r="2" fill="currentColor" opacity="0.55" />
+            <path d="M6.2 7 10.3 4" stroke="currentColor" strokeWidth="1.2" opacity="0.55" />
+            <path d="M6.2 9 10.3 12" stroke="currentColor" strokeWidth="1.2" opacity="0.55" />
+          </svg>
+          dbt Pilot
+        </span>
         <div className="navbar-links">
           {NAV_ITEMS.map((item) => (
             <Link

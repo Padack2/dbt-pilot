@@ -2,7 +2,8 @@ import { getLatestMvRefreshStatus, type MvRefreshStatus } from "@/lib/mv-refresh
 import { triggerMvRefresh } from "@/lib/mv-refresh-action";
 import { REFRESHABLE_MVS, REFRESH_COOLDOWN_MS, MV_LABELS } from "@/lib/mv-catalog";
 import { getModelSizes } from "@/lib/model-sizes";
-import { getModelGraph, layoutModelGraph } from "@/lib/model-graph";
+import { getModelGraph } from "@/lib/model-graph";
+import { layoutModelGraph } from "@/lib/model-graph-layout";
 import { formatDuration, formatRelativeTime, formatBytes } from "@/lib/format";
 import { RefreshProgress } from "@/components/RefreshProgress";
 import { ModelGraph } from "@/components/ModelGraph";
