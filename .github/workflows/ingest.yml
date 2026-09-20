@@ -32,6 +32,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/ingest/requirements.txt
+            pipeline/observability/requirements.txt
+            pipeline/dbt/requirements.txt
 
       - name: Install Python dependencies
         run: pip install -r pipeline/ingest/requirements.txt -r pipeline/observability/requirements.txt

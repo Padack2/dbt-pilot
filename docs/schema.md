@@ -211,9 +211,13 @@ GROUP BY event_date, event_hour, type;
 
 | 롤 | 권한 | 용도 |
 |----|------|------|
-| batch_user | CONNECT, INSERT·SELECT on raw_events | GitHub Actions 배치 수집, dbt 실행, MV REFRESH |
+| batch_user | CONNECT, INSERT·SELECT·DELETE on raw_events | GitHub Actions 배치 수집, dbt 실행, MV REFRESH, 7일 보존 정리(ADR-013) |
 | readonly_user | CONNECT, SELECT on ALL TABLES | 웹 대시보드 조회, LLM 챗봇 조회 |
 
 - `ALTER DEFAULT PRIVILEGES` 설정으로 추후 생성되는 테이블/MV에도 자동 권한 부여
 - LLM 챗봇은 `readonly_user` 커넥션만 사용 (DELETE·INSERT 원천 차단)
 - MV REFRESH는 `batch_user` 커넥션에서만 실행
+- `raw_events`는 admin이 만든 테이블이라 dbt가 직접 만드는 다른 테이블(소유권으로 전체
+  권한 자동 부여)과 달리 필요한 권한만 명시적으로 부여해야 한다 — 원래 INSERT·SELECT만
+  있었고, `raw_events` 보존 정책(ADR-013) 적용을 위해 DELETE를 추가로 부여했다
+  (`pipeline/sql/grant_raw_events_delete.sql`, admin 1회 실행 필요)
