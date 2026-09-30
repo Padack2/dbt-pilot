@@ -12,7 +12,7 @@
 ### raw_events
 
 GitHub Public Events API (`GET /events`)에서 수집한 원본 이벤트 데이터를 적재하는 테이블.
-5분 주기 GitHub Actions 배치가 INSERT하며, `event_id` 기준 중복 적재 방지.
+5분 주기로 수집한 이벤트를 1시간 주기 GitHub Actions 배치가 모아서 INSERT하며(ADR-015), `event_id` 기준 중복 적재 방지.
 저장 용량 관리를 위해 `created_at` 기준 **7일**이 지난 행은 매 파이프라인 실행마다 자동
 삭제된다(`prune_raw_events` 매크로, ADR-013). `precomputed_events`의 incremental 워터마크는
 이 테이블이 아닌 자기 자신 기준이라 평소 실행에는 영향 없음 — `dbt build --full-refresh` 시

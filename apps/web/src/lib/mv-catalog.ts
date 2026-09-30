@@ -24,4 +24,6 @@ export const MV_LABELS: Record<string, string> = {
 };
 
 // 인증 없는 공개 페이지에서 남용으로 인한 DB 부하를 막기 위한 최소 재요청 간격.
-export const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+// 새 데이터는 1시간마다 파이프라인이 적재 + REFRESH까지 하므로 그보다 잦은 수동 REFRESH는
+// 같은 결과를 다시 계산할 뿐이고 Neon 컴퓨트 쿼터만 소모한다(ADR-015).
+export const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;

@@ -69,3 +69,10 @@
   기준 7일 이내인지 주기적으로 확인
 - 롤백 전략: `.github/workflows/ingest.yml`의 "Prune raw_events" 스텝만 제거하면 즉시
   삭제가 멈춘다(매크로 파일은 남겨둬도 무해함). 이미 삭제된 데이터는 복구 불가
+
+**추가 조치 (배포 후 발견)**: 실제 배포해보니 `permission denied for table raw_events`로
+바로 실패했다. `batch_user`는 `raw_events`에 원래 INSERT·SELECT만 가지고 있었다(append-only
+안전장치, `docs/schema.md` 참고) — dbt가 직접 만드는 다른 테이블과 달리 `raw_events`는
+admin이 만든 테이블이라 소유권으로 권한이 자동 부여되지 않기 때문이다. DELETE 권한을 추가로
+부여해야 해서 `pipeline/sql/grant_raw_events_delete.sql`을 admin 권한으로 1회 실행하도록
+안내를 추가했다.

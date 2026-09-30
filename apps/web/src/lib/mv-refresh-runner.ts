@@ -17,7 +17,7 @@ export type MvRefreshResult =
 // REFRESH 버튼(Server Action, mv-refresh-action.ts)과 챗봇의 refresh_materialized_views
 // 도구가 공통으로 쓰는 핵심 로직. 쿨다운/락 보호장치(ADR-006)가 여기 한 곳에만 있어서
 // 어느 진입점으로 들어오든 동일하게 적용된다 — 챗봇이 REFRESH를 반복 요청받아도
-// 실제 실행은 5분에 한 번으로 서버가 강제한다(LLM의 "명시적 요청 시에만 호출" 지시는
+// 실제 실행은 1시간에 한 번으로 서버가 강제한다(LLM의 "명시적 요청 시에만 호출" 지시는
 // 보조 수단일 뿐, 진짜 방어선은 이 함수의 쿨다운/락 체크).
 export async function runMvRefresh(): Promise<MvRefreshResult> {
   if (getRefreshProgress().running) {

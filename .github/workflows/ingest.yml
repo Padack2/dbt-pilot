@@ -1,22 +1,29 @@
 name: Ingest & dbt build
 
 on:
-  # 5분 주기 트리거는 GitHub Actions의 schedule 이벤트가 고부하 시간대에
-  # 수 시간까지 지연/드롭되는 문제(ADR-003)로 인해 외부 cron(cron-job.org)이
-  # workflow_dispatch를 호출하는 방식으로 대체함. schedule 블록은 의도적으로 제거.
+  # GitHub Actions의 schedule 이벤트가 고부하 시간대에 수 시간까지 지연/드롭되는
+  # 문제(ADR-003)로 인해 외부 cron(cron-job.org)이 workflow_dispatch를 호출하는 방식으로
+  # 대체함. schedule 블록은 의도적으로 제거.
+  # 수집은 collect.yml이 5분마다 artifact로 버퍼링하고, 이 워크플로우는 1시간마다 그걸
+  # 모아 적재 + dbt build를 한다 — Neon 컴퓨트를 1시간에 한 번만 깨워 무료 플랜 컴퓨트
+  # 쿼터(월 100 CU-hours) 안에 머물기 위함(ADR-015).
   workflow_dispatch: {}
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # 5분 주기 트리거가 이전 실행보다 먼저 끝나도 겹쳐 돌지 않도록 순차 대기시킴
+    # ingest.py가 collect.yml의 artifact를 조회/다운로드하고 적재 후 삭제하는 데 필요
+    permissions:
+      actions: write
+      contents: read
+    # 다음 트리거가 이전 실행보다 먼저 와도 겹쳐 돌지 않도록 순차 대기시킴
     # (incremental 모델 + MV refresh가 동시에 두 번 도는 상황 방지)
     concurrency:
       group: ingest-pipeline
       cancel-in-progress: false
     env:
       DATABASE_URL_BATCH: ${{ secrets.DATABASE_URL_BATCH }}
-      GITHUB_TOKEN: ${{ secrets.GH_EVENTS_TOKEN }}
+      ARTIFACTS_TOKEN: ${{ github.token }}
       PGHOST: ${{ secrets.PGHOST }}
       PGUSER: ${{ secrets.PGUSER }}
       PGPASSWORD: ${{ secrets.PGPASSWORD }}
@@ -41,38 +48,51 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r pipeline/ingest/requirements.txt -r pipeline/observability/requirements.txt
 
-      - name: Run ingest
+      # 쿼터 초과는 다음 결제 주기까지 복구 불가한 예상된 중단이라, 실패로 처리해 매 실행마다
+      # 실패 메일/Slack 알림을 쌓는 대신 이후 스텝만 건너뛰고 성공 종료한다(ADR-015)
+      - name: Check Neon compute quota
+        id: db
+        run: python pipeline/observability/check_db.py
+
+      - name: Load buffered events
+        if: steps.db.outputs.available == 'true'
         id: ingest
         run: python pipeline/ingest/ingest.py
 
       - name: Install dbt
+        if: steps.db.outputs.available == 'true'
         run: pip install -r pipeline/dbt/requirements.txt
 
       - name: Configure dbt profile
+        if: steps.db.outputs.available == 'true'
         run: |
           mkdir -p ~/.dbt
           cp pipeline/dbt/profiles.yml.example ~/.dbt/profiles.yml
 
       # run + test를 의존성 순서대로 실행 - 데이터 품질 테스트 실패 시 하위 MV까지 내려가지 않음
       - name: dbt build
+        if: steps.db.outputs.available == 'true'
         run: dbt build --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
       # dbt-postgres의 materialized_view는 설정 변경 시에만 DDL을 적용하고
       # 데이터를 자동 refresh하지 않으므로 CONCURRENTLY refresh를 별도로 트리거
       - name: Refresh materialized views (CONCURRENTLY)
+        if: steps.db.outputs.available == 'true'
         run: dbt run-operation refresh_materialized_views --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
       # raw_events는 삭제 로직이 없으면 무한정 커져 Neon 무료 티어 용량을 넘기므로,
       # 이미 precomputed_events/MV 집계가 끝난 7일 이상 지난 원본 이벤트를 정리한다 (ADR-013)
       - name: Prune raw_events older than 7 days
+        if: steps.db.outputs.available == 'true'
         run: dbt run-operation prune_raw_events --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
       # precomputed_events도 보존 정책이 없으면 무기한 커지므로 동일하게 7일만 유지 (ADR-014)
       - name: Prune precomputed_events older than 7 days
+        if: steps.db.outputs.available == 'true'
         run: dbt run-operation prune_precomputed_events --project-dir pipeline/dbt --profiles-dir ~/.dbt
 
       - name: Record successful run
-        if: success()
+        if: success() && steps.db.outputs.available == 'true'
         run: |
           python pipeline/observability/record_run.py \
             --status success \
@@ -104,7 +124,7 @@ jobs:
             --error-message "$ERROR_MESSAGE" \
             --github-run-id "${{ github.run_id }}"
 
-      # 5분 주기 배치라 일시적 오류로도 실패가 잦을 수 있어, 매 실패마다 알리지 않고
+      # 주기 배치라 일시적 오류로도 실패가 잦을 수 있어, 매 실패마다 알리지 않고
       # 연속 실패가 임계값(배수)에 도달했을 때만 Slack으로 알림 (알림 피로 방지)
       - name: Check consecutive failure streak
         if: failure()

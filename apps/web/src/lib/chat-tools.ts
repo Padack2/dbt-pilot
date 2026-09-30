@@ -112,7 +112,7 @@ export const CHAT_TOOLS: ToolDefinition[] = [
     description:
       "대시보드의 Materialized View 6개를 전부 REFRESH해서 최신 데이터로 갱신한다. 사용자가 " +
       "'새로고침해줘', '전체 REFRESH 해줘', 'MV 갱신해줘'처럼 명시적으로 요청했을 때만 호출한다 " +
-      "(단순 상태 질문에는 호출하지 말 것). 5분 쿨다운이 있어 너무 자주 요청하면 거부될 수 있다 " +
+      "(단순 상태 질문에는 호출하지 말 것). 1시간 쿨다운이 있어 너무 자주 요청하면 거부될 수 있다 " +
       "— 이건 이 도구가 판단하는 게 아니라 서버가 강제하는 제약이다.",
     parameters: { type: "object", properties: {} },
     async execute() {
