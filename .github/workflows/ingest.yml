@@ -30,13 +30,13 @@ jobs:
       PGDATABASE: ${{ secrets.PGDATABASE }}
       FAILURE_ALERT_THRESHOLD: "3"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Record start time
         id: timing
         run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

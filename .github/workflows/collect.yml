@@ -12,9 +12,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GH_EVENTS_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -29,7 +29,7 @@ jobs:
       # 이름 prefix(raw-events-)는 ingest.py의 ARTIFACT_PREFIX와 맞춰야 한다.
       # 보존 기간은 raw_events 보존(ADR-013)과 같은 7일 — 쿼터 초과 등으로 적재가 밀려도
       # 이 기간 안에만 풀리면 수집분이 유실되지 않는다
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: raw-events-${{ github.run_id }}
           path: events.jsonl

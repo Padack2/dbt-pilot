@@ -20,7 +20,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Ensure bot label exists
         run: gh label create maintenance-bot --color BFD4F2 --description "Claude 유지보수 봇(ADR-016)" --force
