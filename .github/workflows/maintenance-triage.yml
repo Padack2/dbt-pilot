@@ -1,0 +1,79 @@
+name: Maintenance triage (Claude)
+
+on:
+  # 파이프라인 워크플로우가 끝날 때마다 깨어나지만, 실제로 Claude를 부르는 건 같은 워크플로우가
+  # 연속으로 실패했고 열린 봇 이슈가 없을 때뿐이다 — 일시 장애(GitHub API 502 등)나 이미 보고된
+  # 장애로 Pro 사용 한도를 태우지 않기 위함(ADR-016)
+  workflow_run:
+    workflows: ["Collect GitHub events", "Ingest & dbt build", "Fetch trending repos"]
+    types: [completed]
+
+jobs:
+  triage:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+    # Collect(5분)와 Ingest(정각)가 동시에 실패해도 하나씩 돌아, 두 번째 실행이 첫 번째가 만든
+    # 이슈를 보고 건너뛰게 한다
+    concurrency:
+      group: maintenance-triage
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      FAILURE_STREAK_THRESHOLD: "3"
+    steps:
+      - name: Check failure streak and open bot issues
+        id: gate
+        env:
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+        run: |
+          failures=$(gh run list --workflow "$WORKFLOW_ID" --status completed \
+            --limit "$FAILURE_STREAK_THRESHOLD" --json conclusion \
+            --jq '[.[] | select(.conclusion == "failure")] | length')
+          open_issues=$(gh issue list --label maintenance-bot --state open --json number --jq length)
+          echo "연속 실패 ${failures}/${FAILURE_STREAK_THRESHOLD}, 열린 봇 이슈 ${open_issues}건"
+          if [ "$failures" -ge "$FAILURE_STREAK_THRESHOLD" ] && [ "$open_issues" -eq 0 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Ensure bot label exists
+        if: steps.gate.outputs.run == 'true'
+        run: gh label create maintenance-bot --color BFD4F2 --description "Claude 유지보수 봇(ADR-016)" --force
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            실패한 워크플로우: ${{ github.event.workflow_run.name }}
+            최근 실패 실행: ${{ github.event.workflow_run.html_url }} (run id ${{ github.event.workflow_run.id }})
+
+            이 워크플로우가 ${{ env.FAILURE_STREAK_THRESHOLD }}회 연속 실패했다. 아무도 상시 관리하지 않는
+            토이 프로젝트라 네가 원인을 진단해야 한다. docs/adr/ 의 ADR들이 설계 배경이다.
+
+            1. `gh run view <run id> --log-failed`로 실패 로그를 읽고, 필요하면 `gh run list --workflow`로
+               언제부터 실패했는지 확인한다.
+            2. 원인을 분류한다:
+               - 외부 원인(GitHub/Neon 장애, 쿼터 초과, 토큰 만료·권한 부족, cron-job.org 등): 코드를 고치지 말 것
+               - 코드로 고칠 수 있는 원인(파이썬/dbt/의존성 버그, deprecated 액션 등)
+            3. 코드로 고칠 수 있으면 `claude/` 접두사 브랜치에서 최소한으로 수정하고 PR을 연다
+               (`gh pr create --label maintenance-bot`). main에 직접 push하지 말 것.
+               `.github/workflows/` 파일은 GITHUB_TOKEN 제약으로 push할 수 없으니, 워크플로우 수정이
+               필요하면 PR 대신 이슈 본문에 제안 diff를 적는다.
+            4. 어느 경우든 `gh issue create --label maintenance-bot`으로 이슈를 하나 만든다. 한국어로,
+               증상(실패 시작 시각, 에러 메시지), 원인, 조치(PR 링크 또는 사람이 해야 할 일)를 적는다.
+               시크릿 값이나 접속 문자열은 절대 이슈/PR에 적지 말 것.
+          claude_args: |
+            --model sonnet
+            --max-turns 20
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh run view:*),Bash(gh run list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git checkout -b:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin claude/*),Bash(git push -u origin claude/*)"

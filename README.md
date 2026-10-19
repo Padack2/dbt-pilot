@@ -166,6 +166,7 @@ Grafana 쪽 준비는 아래 순서로 진행해 주세요.
 | `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` | dbt profiles.yml용 (배치 롤과 동일 계정) |
 | `GH_EVENTS_TOKEN` | GitHub Events API rate limit 상향용 (선택, `collect.yml`에서 사용) |
 | `SLACK_WEBHOOK_URL` | 연속 실패 시 파이프라인 알림 |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude 유지보수 봇(`maintenance-*.yml`). 로컬에서 `claude setup-token`으로 발급(Claude Pro/Max 구독), ADR-016 참고 |
 
 ## 파이프라인 트리거 (cron-job.org)
 

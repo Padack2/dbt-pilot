@@ -1,0 +1,57 @@
+name: Monthly maintenance (Claude)
+
+on:
+  # 다른 워크플로우와 달리 cron-job.org가 아니라 GitHub schedule을 쓴다 — cron-job.org의 PAT가
+  # 만료되면 파이프라인이 통째로 멈추는데, 이 점검이 그걸 잡아내야 하므로 같은 PAT에 의존하면
+  # 안 된다. 월 1회라 schedule 특유의 수 시간 지연(ADR-003)은 문제 되지 않는다(ADR-016)
+  schedule:
+    - cron: "0 1 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure bot label exists
+        run: gh label create maintenance-bot --color BFD4F2 --description "Claude 유지보수 봇(ADR-016)" --force
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            REPO: ${{ github.repository }}
+
+            월간 유지보수 점검이다. 아무도 상시 관리하지 않는 토이 프로젝트라, 방치 상태에서 조용히
+            망가질 만한 것들을 미리 찾는 게 목적이다. docs/adr/ 의 ADR들이 설계 배경이다.
+
+            0. `gh issue list --label maintenance-bot --state open`, `gh pr list --label maintenance-bot --state open`으로
+               이미 열린 봇 이슈/PR을 확인하고, 같은 내용은 다시 만들지 말 것.
+            1. 파이프라인 가동 여부: `gh run list --workflow collect.yml --limit 5`로 마지막 실행 시각을 본다.
+               최근 1시간 넘게 실행이 없으면 cron-job.org PAT 만료 등으로 트리거가 끊긴 것이다(ADR-003) — 최우선으로 보고.
+            2. 경고/공지: collect.yml, ingest.yml, trending.yml의 최근 실행을 `gh run view <id>`로 열어
+               ANNOTATIONS의 deprecation 경고·러너 이미지 공지를 확인한다.
+            3. 노후화: .github/workflows/의 액션 메이저 버전, Python 버전, pipeline/**/requirements.txt의
+               고정 버전 중 지원 종료됐거나 곧 종료될 것을 찾는다. 확실하지 않은 건 추측하지 말 것.
+            4. 결과 처리:
+               - 코드로 고칠 수 있는 것(requirements, 파이썬 코드)은 `claude/` 접두사 브랜치에서 최소한으로 고쳐
+                 PR 하나로 묶는다(`gh pr create --label maintenance-bot`). main에 직접 push하지 말 것.
+               - `.github/workflows/` 수정은 GITHUB_TOKEN 제약으로 push할 수 없으니 이슈에 제안 diff로 적는다.
+               - 사람이 해야 할 일(토큰 재발급 등)이나 workflow 수정 제안은 `gh issue create --label maintenance-bot`으로
+                 이슈 하나에 모은다.
+               - 발견한 게 없으면 아무것도 만들지 말 것.
+               이슈/PR은 한국어로 쓰고, 시크릿 값이나 접속 문자열은 절대 적지 말 것.
+          claude_args: |
+            --model sonnet
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh run view:*),Bash(gh run list:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git checkout -b:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin claude/*),Bash(git push -u origin claude/*)"
