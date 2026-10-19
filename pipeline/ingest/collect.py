@@ -40,18 +40,21 @@ def fetch_events() -> list[dict]:
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
-            # rate limit(403/429)은 지금까지 모은 데이터로 계속 진행 — event_id 중복 제거가
-            # 있어 다음 5분 주기 실행이 자연스럽게 이어서 채운다. 그 외 에러(인증 실패 등)는
-            # 그대로 실패시켜야 조용히 묻히지 않는다.
+            # rate limit(403/429)과 GitHub 측 일시 장애(5xx, 예: 502 Bad Gateway)는 지금까지
+            # 모은 데이터로 계속 진행 — event_id 중복 제거가 있어 다음 5분 주기 실행이 자연스럽게
+            # 이어서 채운다. 그 외 에러(인증 실패 등)는 그대로 실패시켜야 조용히 묻히지 않는다.
             is_rate_limited = (
                 err.response is not None
                 and err.response.status_code in (403, 429)
                 and "rate limit" in err.response.text.lower()
             )
-            if not is_rate_limited:
+            is_server_error = (
+                err.response is not None and err.response.status_code >= 500
+            )
+            if not (is_rate_limited or is_server_error):
                 raise
             print(
-                f"GitHub API rate limit로 {page}페이지에서 중단 — "
+                f"GitHub API {err.response.status_code} 에러로 {page}페이지에서 중단 — "
                 f"지금까지 모은 {len(events)}건으로 계속 진행"
             )
             break
