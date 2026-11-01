@@ -12,6 +12,7 @@ trending_repos_snapshot 테이블은 pipeline/sql/trending_repos_snapshot.sql로
 
 import datetime
 import os
+import time
 
 import psycopg2
 import psycopg2.extras
@@ -20,6 +21,7 @@ import requests
 SEARCH_URL = "https://api.github.com/search/repositories"
 LOOKBACK_DAYS = 7
 PER_PAGE = 50
+MAX_ATTEMPTS = 3
 
 INSERT_SQL = """
 insert into trending_repos_snapshot
@@ -44,8 +46,14 @@ def fetch_trending_repos() -> list[dict]:
         "order": "desc",
         "per_page": PER_PAGE,
     }
-    response = requests.get(SEARCH_URL, headers=headers, params=params, timeout=30)
-    response.raise_for_status()
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        response = requests.get(SEARCH_URL, headers=headers, params=params, timeout=30)
+        # Search API는 rate limit(403/429)이 간헐적으로 발생해 하루 1회 스냅샷이 누락됨
+        if response.status_code in (403, 429) and attempt < MAX_ATTEMPTS:
+            time.sleep(min(int(response.headers.get("Retry-After", 60)), 120))
+            continue
+        response.raise_for_status()
+        break
     return response.json().get("items", [])
 
 
