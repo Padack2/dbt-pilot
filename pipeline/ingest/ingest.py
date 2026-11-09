@@ -71,8 +71,22 @@ def main() -> None:
         }
     )
 
-    artifacts = list_buffered_artifacts(session, repo)
-    rows = [row for artifact in artifacts for row in download_rows(session, artifact)]
+    artifacts = []
+    rows = []
+    for artifact in list_buffered_artifacts(session, repo):
+        try:
+            rows.extend(download_rows(session, artifact))
+        except requests.exceptions.HTTPError as err:
+            # GitHub 측 일시 장애(5xx)는 해당 artifact만 건너뛴다 — 삭제하지 않으므로 보존 기간
+            # 안에서 다음 실행 때 다시 시도된다. 그 외 에러(인증 실패 등)는 그대로 실패시킨다.
+            if err.response is None or err.response.status_code < 500:
+                raise
+            print(
+                f"artifact {artifact['id']} 다운로드 {err.response.status_code} 에러 — "
+                f"다음 실행 때 재시도"
+            )
+            continue
+        artifacts.append(artifact)
 
     conn = psycopg2.connect(os.environ["DATABASE_URL_BATCH"])
     try:
