@@ -1,13 +1,14 @@
 {{ config(materialized='view') }}
 
 -- 급상승 레포 스냅샷(ADR-004, 하루 1회)과 5분 주기 /events 샘플로 관측한 실제 활동을
--- repo_name으로 교차 조회한다. 스냅샷은 레포당 최신 1건만 사용.
+-- repo_name으로 교차 조회한다. 스냅샷은 가장 최근 수집분만 사용 — 레포별 최신 1건을 쓰면
+-- 수집 범위(최근 7일 생성)를 벗어난 과거 레포가 마지막 스냅샷 값으로 계속 남는다.
 
 with latest_snapshot as (
-    select distinct on (repo_name)
+    select
         repo_name, description, stars, forks, language, repo_created_at, repo_pushed_at, captured_at, topics
     from {{ ref('stg_trending_repos_snapshot') }}
-    order by repo_name, captured_at desc
+    where captured_at = (select max(captured_at) from {{ ref('stg_trending_repos_snapshot') }})
 ),
 
 observed_activity as (
